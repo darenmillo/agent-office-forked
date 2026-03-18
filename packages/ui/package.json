@@ -4,6 +4,7 @@
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
     "scripts": {
+        "dev": "vite",
         "build": "tsc",
         "test": "jest"
     },
@@ -19,8 +20,8 @@
         "@babel/plugin-proposal-decorators": "^7.29.0",
         "@types/react": "^18.3.28",
         "@types/react-dom": "^18.3.7",
-        "@vitejs/plugin-react": "^5.1.4",
+        "@vitejs/plugin-react": "^4.7.0",
         "typescript": "^5.9.3",
-        "vite": "^7.3.1"
+        "vite": "^6.4.1"
     }
 }

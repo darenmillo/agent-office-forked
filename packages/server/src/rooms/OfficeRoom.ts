@@ -43,7 +43,7 @@ export class OfficeRoom extends Room<OfficeState> {
 
         const config: OfficeConfig = {
             name: options.name || 'Startup HQ',
-            grid: { width: 40, height: 40, tileSize: 16 },
+            grid: { width: 64, height: 64, tileSize: 16 },
             rooms: [],
             furniture: [],
             spawnPoints: [{ x: 10, y: 10 }],
@@ -359,7 +359,7 @@ export class OfficeRoom extends Room<OfficeState> {
 
         // ─── FURNITURE INTERACTION PATHFINDING ───
         // Office grid boundaries (agents must stay inside)
-        const BOUNDS = { minX: 2, maxX: 36, minY: 2, maxY: 36 };
+        const BOUNDS = { minX: 2, maxX: 62, minY: 2, maxY: 62 };
         const clamp = (agent: any) => {
             agent.x = Math.max(BOUNDS.minX, Math.min(BOUNDS.maxX, agent.x));
             agent.y = Math.max(BOUNDS.minY, Math.min(BOUNDS.maxY, agent.y));

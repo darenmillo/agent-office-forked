@@ -1,56 +1,160 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { eventBus } from '../events';
-import { getColyseusRoom } from '../game/Game';
+import React, { useState, useRef, useEffect } from 'react';
+import { API } from '../agentNames';
+
+interface Message {
+    sender: string;
+    text: string;
+    time?: string;
+}
+
+const STORAGE_KEY = 'agent-office-chat-history';
+
+function loadHistory(): Message[] {
+    try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) return JSON.parse(stored);
+    } catch { /* corrupt storage */ }
+    return [{ sender: 'System', text: 'Chat with Path Palmer (PM) to create tasks.' }];
+}
+
+function saveHistory(messages: Message[]) {
+    try {
+        // Keep last 100 messages to avoid bloating localStorage
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.slice(-100)));
+    } catch { /* full storage */ }
+}
 
 export function ChatPanel() {
-    const [messages, setMessages] = useState<{ sender: string, text: string }[]>([
-        { sender: 'System', text: 'Office environment initialized.' }
-    ]);
+    const [messages, setMessages] = useState<Message[]>(loadHistory);
     const [input, setInput] = useState('');
-    const endRef = useRef<HTMLDivElement>(null);
+    const [loading, setLoading] = useState(false);
+    const scrollRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => {
-        const handleChat = (e: any) => {
-            setMessages(prev => [...prev, e.detail]);
-        };
-        eventBus.addEventListener('chat-message', handleChat);
-        return () => eventBus.removeEventListener('chat-message', handleChat);
-    }, []);
+    // Persist messages to localStorage on change
+    useEffect(() => { saveHistory(messages); }, [messages]);
 
-    useEffect(() => {
-        endRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages]);
+    const scrollToBottom = () => {
+        if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    };
 
-    const send = () => {
-        if (!input.trim()) return;
-        const room = getColyseusRoom();
-        if (room) {
-            room.send('chat', { text: input });
-            setInput('');
-        } else {
-            setMessages(prev => [...prev, { sender: 'System', text: 'Error: Cannot send message, Colyseus not connected.' }]);
+    // Auto-scroll on mount
+    useEffect(() => { setTimeout(scrollToBottom, 100); }, []);
+
+    const sendMessage = async () => {
+        const text = input.trim();
+        if (!text || loading) return;
+
+        const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        setInput('');
+        setMessages(prev => [...prev, { sender: 'You', text, time }]);
+        setLoading(true);
+        setTimeout(scrollToBottom, 50);
+
+        try {
+            const res = await fetch(`${API}/api/agents/agent_pm/message`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: text,
+                    sender: 'daren',
+                    history: messages.slice(-10).map(m => ({
+                        role: m.sender === 'You' ? 'user' : 'assistant',
+                        content: m.text,
+                    })),
+                }),
+            });
+            const data = await res.json();
+            setMessages(prev => [...prev, {
+                sender: 'Path',
+                text: data.reply || '(no response)',
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            }]);
+        } catch {
+            setMessages(prev => [...prev, { sender: 'System', text: 'Failed to reach bot manager.' }]);
+        } finally {
+            setLoading(false);
+            setTimeout(scrollToBottom, 50);
         }
     };
 
+    const clearHistory = () => {
+        const fresh = [{ sender: 'System', text: 'New conversation started.', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }];
+        setMessages(fresh);
+    };
+
     return (
-        <div style={{ position: 'absolute', right: 20, bottom: 20, width: 300, height: 400, backgroundColor: 'rgba(0,0,0,0.8)', color: 'white', padding: 16, borderRadius: 8, display: 'flex', flexDirection: 'column' }}>
-            <h3 style={{ margin: '0 0 10px 0' }}>Office Chat</h3>
-            <div style={{ flex: 1, overflowY: 'auto', fontSize: '14px', marginBottom: 10, paddingRight: 4 }}>
-                {messages.map((m, i) => (
-                    <p key={i} style={{ margin: '6px 0', lineHeight: '1.4' }}>
-                        <strong style={{ color: m.sender === 'System' ? '#00eeff' : '#aaffaa' }}>{m.sender}:</strong> {m.text}
-                    </p>
-                ))}
-                <div ref={endRef} />
+        <div style={{
+            position: 'absolute', right: 20, bottom: 20, width: 320, height: 420,
+            background: 'rgba(10,10,30,0.92)', borderRadius: 12,
+            border: '1px solid rgba(108,92,231,0.3)',
+            display: 'flex', flexDirection: 'column',
+            zIndex: 10, pointerEvents: 'auto',
+        }}>
+            <div style={{
+                padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.1)',
+                fontSize: 14, fontWeight: 600, color: '#dfe6e9',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}>
+                <span>💬 Office Chat</span>
+                <button onClick={clearHistory} title="New conversation" style={{
+                    background: 'none', border: 'none', color: '#636e72', cursor: 'pointer', fontSize: 11,
+                }}>New Thread</button>
             </div>
-            <input
-                type="text"
-                placeholder="Send a message..."
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && send()}
-                style={{ width: '100%', padding: '10px', boxSizing: 'border-box', background: '#333', color: 'white', border: '1px solid #444', borderRadius: 4, outline: 'none' }}
-            />
+
+            <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: 10 }}>
+                {messages.map((m, i) => (
+                    <div key={i} style={{
+                        marginBottom: 8,
+                        textAlign: m.sender === 'You' ? 'right' : 'left',
+                    }}>
+                        <span style={{
+                            display: 'inline-block',
+                            background: m.sender === 'You' ? 'rgba(108,92,231,0.4)' : 'rgba(255,255,255,0.08)',
+                            color: '#dfe6e9', fontSize: 12, padding: '6px 10px',
+                            borderRadius: 8, maxWidth: '85%', textAlign: 'left',
+                            wordBreak: 'break-word', whiteSpace: 'pre-wrap',
+                        }}>
+                            {m.sender !== 'You' && (
+                                <div style={{ fontSize: 10, color: m.sender === 'System' ? '#fdcb6e' : '#6c5ce7', marginBottom: 2, fontWeight: 600 }}>
+                                    {m.sender} {m.time && <span style={{ color: '#636e72', fontWeight: 400 }}>{m.time}</span>}
+                                </div>
+                            )}
+                            {m.text}
+                        </span>
+                    </div>
+                ))}
+                {loading && (
+                    <div style={{ color: '#b2bec3', fontSize: 11, fontStyle: 'italic' }}>
+                        Path is thinking...
+                    </div>
+                )}
+            </div>
+
+            <div style={{ padding: 8, borderTop: '1px solid rgba(255,255,255,0.1)', display: 'flex', gap: 6 }}>
+                <input
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && sendMessage()}
+                    placeholder="Talk to Path..."
+                    disabled={loading}
+                    style={{
+                        flex: 1, padding: '6px 10px', fontSize: 12,
+                        background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)',
+                        borderRadius: 6, color: '#dfe6e9', outline: 'none',
+                    }}
+                />
+                <button
+                    onClick={sendMessage}
+                    disabled={loading}
+                    style={{
+                        padding: '6px 12px', fontSize: 12, fontWeight: 600,
+                        background: '#6c5ce7', border: 'none', borderRadius: 6,
+                        color: '#fff', cursor: 'pointer',
+                    }}
+                >
+                    Send
+                </button>
+            </div>
         </div>
     );
 }

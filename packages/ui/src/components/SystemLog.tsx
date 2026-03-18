@@ -1,102 +1,95 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { eventBus } from '../events';
+import { agentName, API } from '../agentNames';
 
-interface LogEntry {
-    id: number;
+interface ActivityEvent {
+    type: string;  // task_done, task_failed, memory
     agent: string;
-    action: string;
-    thought: string;
-    time: string;
+    title?: string;
+    content?: string;
+    time: number;
 }
 
-const actionIcons: Record<string, string> = {
-    'work': '💻', 'talk': '💬', 'idle': '😌',
-    'use_tool': '🔧', 'move': '🚶', 'think': '💡'
+const TYPE_ICONS: Record<string, string> = {
+    task_done: '✅',
+    task_failed: '❌',
+    memory: '🧠',
 };
 
-export function SystemLog() {
-    const [logs, setLogs] = useState<LogEntry[]>([]);
-    const [isOpen, setIsOpen] = useState(true);
-    const scrollRef = useRef<HTMLDivElement>(null);
-    const idRef = useRef(0);
+function formatTime(ts: number): string {
+    if (!ts) return '';
+    const d = new Date(ts * 1000);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
 
-    const lastEntryPerAgent = useRef<Record<string, string>>({});
+export function SystemLog() {
+    const [events, setEvents] = useState<ActivityEvent[]>([]);
+    const [collapsed, setCollapsed] = useState(false);
+    const scrollRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        const handler = (e: Event) => {
-            const detail = (e as CustomEvent).detail;
-
-            // Deduplicate: skip if same agent + action + thought as last time
-            const key = `${detail.agent}:${detail.action}:${detail.thought}`;
-            if (lastEntryPerAgent.current[detail.agent] === key) return;
-            lastEntryPerAgent.current[detail.agent] = key;
-
-            setLogs(prev => {
-                const newLog: LogEntry = { id: idRef.current++, ...detail };
-                const updated = [...prev, newLog];
-                return updated.slice(-30); // Keep last 30 entries
-            });
+        const poll = async () => {
+            try {
+                const res = await fetch(`${API}/api/activity`);
+                const data = await res.json();
+                setEvents(data.events || []);
+            } catch { /* offline */ }
         };
-        eventBus.addEventListener('activity-log', handler);
-        return () => eventBus.removeEventListener('activity-log', handler);
+        poll();
+        const id = setInterval(poll, 5000);
+        return () => clearInterval(id);
     }, []);
 
     useEffect(() => {
-        if (scrollRef.current) {
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        }
-    }, [logs]);
+        if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }, [events]);
 
-    if (!isOpen) {
+    if (collapsed) {
         return (
             <button
-                onClick={() => setIsOpen(true)}
+                onClick={() => setCollapsed(false)}
                 style={{
-                    position: 'absolute', right: 20, top: 20,
-                    padding: '6px 12px', borderRadius: 8, border: 'none',
-                    backgroundColor: '#2d3436', color: '#aaa',
-                    cursor: 'pointer', fontSize: '11px', zIndex: 10
+                    position: 'absolute', right: 20, top: 20, zIndex: 10, pointerEvents: 'auto',
+                    background: 'rgba(10,10,30,0.88)', border: '1px solid rgba(108,92,231,0.3)',
+                    borderRadius: 8, padding: '6px 12px', color: '#dfe6e9', fontSize: 11, cursor: 'pointer',
                 }}
             >
-                📊 Activity Log
+                📊 Activity Log ({events.length})
             </button>
         );
     }
 
     return (
         <div style={{
-            position: 'absolute', right: 20, top: 20, width: 260,
-            backgroundColor: 'rgba(10,10,30,0.92)', color: 'white',
-            padding: 12, borderRadius: 12,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+            position: 'absolute', right: 20, top: 20, width: 280, maxHeight: 300,
+            background: 'rgba(10,10,30,0.88)', borderRadius: 12,
             border: '1px solid rgba(108,92,231,0.3)',
-            maxHeight: '35vh', display: 'flex', flexDirection: 'column',
-            zIndex: 10
+            padding: 10, zIndex: 10, pointerEvents: 'auto',
+            display: 'flex', flexDirection: 'column',
         }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <h3 style={{ margin: 0, fontSize: '13px' }}>📊 System Activity Log</h3>
-                <button onClick={() => setIsOpen(false)} style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontSize: '14px' }}>✕</button>
+                <h3 style={{ margin: 0, fontSize: 13, color: '#dfe6e9' }}>📊 Activity Log</h3>
+                <button onClick={() => setCollapsed(true)} style={{
+                    background: 'none', border: 'none', color: '#b2bec3', cursor: 'pointer', fontSize: 14,
+                }}>✕</button>
             </div>
 
-            <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', fontSize: '10px', lineHeight: 1.5 }}>
-                {logs.length === 0 && (
-                    <p style={{ color: '#555', fontStyle: 'italic', margin: 0 }}>Waiting for agent events...</p>
+            <div ref={scrollRef} style={{ overflowY: 'auto', flex: 1 }}>
+                {events.length === 0 ? (
+                    <p style={{ color: '#636e72', fontSize: 11, margin: 0 }}>No recent activity.</p>
+                ) : (
+                    events.map((ev, i) => (
+                        <div key={i} style={{ marginBottom: 6, fontSize: 11, color: '#b2bec3', lineHeight: 1.4 }}>
+                            <span style={{ color: '#636e72', marginRight: 4 }}>{formatTime(ev.time)}</span>
+                            {TYPE_ICONS[ev.type] || '📌'}{' '}
+                            <span style={{ color: '#6c5ce7' }}>{agentName(ev.agent)}</span>{' '}
+                            {ev.type === 'memory' ? (
+                                <span>learned: <em>{ev.content}</em></span>
+                            ) : (
+                                <span>{ev.type === 'task_done' ? 'completed' : 'failed'}: {ev.title}</span>
+                            )}
+                        </div>
+                    ))
                 )}
-                {logs.map(log => (
-                    <div key={log.id} style={{
-                        padding: '3px 0', borderBottom: '1px solid rgba(255,255,255,0.04)',
-                        display: 'flex', gap: 4, alignItems: 'flex-start'
-                    }}>
-                        <span style={{ opacity: 0.4, minWidth: 48 }}>{log.time}</span>
-                        <span>{actionIcons[log.action] || '•'}</span>
-                        <span>
-                            <strong style={{ color: log.agent === 'Alice' ? '#aaffaa' : '#3a86ff' }}>{log.agent}</strong>
-                            {' '}
-                            <span style={{ color: '#888' }}>{log.action}</span>
-                            {log.thought && <span style={{ color: '#666', fontStyle: 'italic' }}> — "{log.thought.slice(0, 60)}"</span>}
-                        </span>
-                    </div>
-                ))}
             </div>
         </div>
     );
