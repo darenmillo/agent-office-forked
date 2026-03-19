@@ -9,7 +9,7 @@
  */
 
 import { Room, Client } from 'colyseus';
-import { OfficeState } from '../schema/OfficeState';
+import { OfficeState, WalkState } from '../schema/OfficeState';
 
 // Direct room reference — set by onCreate, used by REST endpoints.
 // matchMaker.getRoomById() doesn't reliably trigger schema v2 change tracking,
@@ -23,17 +23,17 @@ export function getActiveRoom(): ExternalOfficeRoom | null {
 const AGENT_DESKS: Record<string, { name: string; x: number; y: number }> = {
     // ⬡ OVERSEER'S DECK — Command (top center, tiles x:18-46, y:2-13)
     'agent-pm':         { name: 'Path Palmer',       x: 22, y: 6  },
-    'command-center':   { name: 'Daren',             x: 36, y: 5  },
-    'claude':           { name: 'Claude',            x: 36, y: 11 },
+    'agent-command-center': { name: 'Daren',          x: 36, y: 5  },
+    'agent-claude':         { name: 'Claude',         x: 36, y: 11 },
     // ⬡ INTELLIGENCE WING (left, tiles x:2-15, y:14-31)
     'agent-researcher': { name: 'Rubick Reeves',     x: 5,  y: 18 },
     'agent-analyst':    { name: 'Arcade Ashworth',   x: 12, y: 18 },
     'agent-skeptic':    { name: 'Sombra Steele',     x: 5,  y: 26 },
     // ⬡ ENGINEERING BAY (center, tiles x:17-37, y:17-33)
-    'agent-dev':        { name: 'Dazzle Devlord',    x: 20, y: 22 },
+    'agent-dev':        { name: 'Meepo',              x: 20, y: 22 },
     'agent-qa':         { name: 'Quinn',             x: 28, y: 22 },
-    'agent-librarian':  { name: 'Lina Ledger',       x: 20, y: 30 },
-    'agent-writer':     { name: 'Windranger Watts',  x: 28, y: 30 },
+    'agent-librarian':  { name: 'Lina Ledger',       x: 20, y: 28 },
+    'agent-writer':     { name: 'Windranger Watts',  x: 28, y: 28 },
     // ⬡ BROADCAST / OPS WING (right, tiles x:40-56, y:14-31)
     'agent-collector':  { name: 'Caustic Crawford',  x: 43, y: 18 },
     'agent-voice':      { name: 'Victor Voss',       x: 50, y: 18 },
@@ -124,6 +124,65 @@ export class ExternalOfficeRoom extends Room<OfficeState> {
             text: `💬 ${message}`,
         });
         return true;
+    }
+
+    agentShowSpeechBubble(agentId: string, message: string, duration: number = 4.0) {
+        const agent = this.state.agents.get(agentId);
+        if (!agent) return false;
+
+        // Broadcast on its own channel — separate from thoughtBubbles and chat log
+        this.broadcast('speech-bubble', {
+            agentId,
+            message: message.slice(0, 200), // safety cap
+            duration,                        // seconds; Phaser converts to ms
+        });
+        return true;
+    }
+
+    /**
+     * Trigger a walk-to-handoff animation. The fromAgent walks to the
+     * toAgent's current position, shows a speech bubble, then returns.
+     *
+     * Sets WalkState in the schema (for late-joiners) and broadcasts
+     * an 'agent-handoff' message (for reliable real-time delivery).
+     */
+    agentHandoff(fromId: string, toId: string, label: string) {
+        const from = this.state.agents.get(fromId);
+        const to = this.state.agents.get(toId);
+        if (!from || !to) return false;
+
+        // Update walk state schema
+        const walk = new WalkState(fromId, to.x, to.y);
+        walk.walking = true;
+        this.state.walks.set(fromId, walk);
+
+        // Broadcast for reliable client delivery
+        this.broadcast('agent-handoff', {
+            fromId,
+            toId,
+            fromX: from.x,
+            fromY: from.y,
+            toX: to.x,
+            toY: to.y,
+            label: (label || 'handoff').slice(0, 80),
+        });
+        return true;
+    }
+
+    /**
+     * Called when a walk-to-handoff animation completes on the client.
+     * Clears the WalkState and resets the agent to their desk position.
+     */
+    agentWalkDone(agentId: string) {
+        this.state.walks.delete(agentId);
+
+        // Snap agent back to their desk position
+        const desk = AGENT_DESKS[agentId];
+        const agent = this.state.agents.get(agentId);
+        if (desk && agent) {
+            agent.x = desk.x;
+            agent.y = desk.y;
+        }
     }
 
     agentMessage(fromId: string, toId: string, message: string) {

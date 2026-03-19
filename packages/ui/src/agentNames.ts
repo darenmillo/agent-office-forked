@@ -1,7 +1,7 @@
 /** Maps agent_id → display name. Used across all panels. */
 export const AGENT_NAMES: Record<string, string> = {
     'agent_pm': 'Path Palmer',
-    'agent_dev': 'Dazzle Devlord',
+    'agent_dev': 'Meepo',
     'agent_qa': 'Quinn',
     'agent_researcher': 'Rubick Reeves',
     'agent_analyst': 'Arcade Ashworth',
