@@ -1,17 +1,52 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { HeroData, Recommendation, UIUpdate, RAIJIN_WS } from '../raijinTypes';
+import { pip, scanlines, glowText, glow } from '../raijinTheme';
 import { RaijinHeroDisplay } from './RaijinHeroDisplay';
 import { RaijinStrategy } from './RaijinStrategy';
 import { RaijinActionBar } from './RaijinActionBar';
 
+const OFFICE_API = 'http://localhost:3000';
+
 type ConnStatus = 'connected' | 'connecting' | 'disconnected';
+type ServerStatus = 'stopped' | 'starting' | 'running' | 'ready';
 
 export function RaijinRecs() {
     const [heroData, setHeroData] = useState<HeroData | null>(null);
     const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
     const [connStatus, setConnStatus] = useState<ConnStatus>('disconnected');
+    const [serverStatus, setServerStatus] = useState<ServerStatus>('stopped');
     const wsRef = useRef<WebSocket | null>(null);
     const retryRef = useRef<number>(1000);
+
+    // Poll Raijin server status
+    const checkServer = useCallback(async () => {
+        try {
+            const resp = await fetch(`${OFFICE_API}/api/raijin/status`);
+            const data = await resp.json();
+            if (data.ready) setServerStatus('ready');
+            else if (data.running) setServerStatus('starting');
+            else setServerStatus('stopped');
+        } catch {
+            setServerStatus('stopped');
+        }
+    }, []);
+
+    useEffect(() => {
+        checkServer();
+        const id = setInterval(checkServer, 3000);
+        return () => clearInterval(id);
+    }, [checkServer]);
+
+    const toggleServer = useCallback(async () => {
+        if (serverStatus === 'ready' || serverStatus === 'starting') {
+            await fetch(`${OFFICE_API}/api/raijin/stop`, { method: 'POST' });
+            setServerStatus('stopped');
+            wsRef.current?.close();
+        } else {
+            setServerStatus('starting');
+            await fetch(`${OFFICE_API}/api/raijin/start`, { method: 'POST' });
+        }
+    }, [serverStatus]);
 
     const connect = useCallback(() => {
         if (wsRef.current?.readyState === WebSocket.OPEN || wsRef.current?.readyState === WebSocket.CONNECTING) return;
@@ -21,7 +56,7 @@ export function RaijinRecs() {
 
         ws.onopen = () => {
             setConnStatus('connected');
-            retryRef.current = 1000; // reset backoff
+            retryRef.current = 1000;
         };
 
         ws.onmessage = (event) => {
@@ -36,7 +71,6 @@ export function RaijinRecs() {
                         const now = Date.now();
                         const stamped = newRecs.map(r => ({ ...r, receivedAt: now }));
                         setRecommendations(prev => {
-                            // Categories present in the new batch
                             const newSkill = stamped.some(r => r.category === 'SKILL');
                             const newItemPriorities = stamped
                                 .filter(r => r.category === 'ITEM')
@@ -45,23 +79,19 @@ export function RaijinRecs() {
                                 ? Math.min(...newItemPriorities) : Infinity;
 
                             const filtered = prev.filter(old => {
-                                // SKILL: replace all old skill recs when new ones arrive
                                 if (old.category === 'SKILL' && newSkill) return false;
-                                // ITEM: remove old items with lower priority than any incoming item
                                 if (old.category === 'ITEM' && old.priority < minNewItemPrio) return false;
-                                // TIMER / GENERAL / FIGHT: accumulate (history log)
                                 return true;
                             });
 
                             const merged = [...stamped, ...filtered];
-                            return merged.slice(0, 50); // keep last 50
+                            return merged.slice(0, 50);
                         });
                     }
                 } else if (update.type === 'game_ended') {
                     setHeroData(null);
                     setRecommendations([]);
                 } else if (update.type === 'connection') {
-                    // Initial connection — no game active
                     if (!(update.data as any).game_active) {
                         setHeroData(null);
                         setRecommendations([]);
@@ -75,7 +105,6 @@ export function RaijinRecs() {
         ws.onclose = () => {
             setConnStatus('disconnected');
             wsRef.current = null;
-            // Exponential backoff reconnect
             const delay = Math.min(retryRef.current, 10000);
             retryRef.current = delay * 2;
             setTimeout(connect, delay);
@@ -90,9 +119,7 @@ export function RaijinRecs() {
 
     useEffect(() => {
         connect();
-        return () => {
-            wsRef.current?.close();
-        };
+        return () => { wsRef.current?.close(); };
     }, [connect]);
 
     // Tick every 5s so age-based filtering re-evaluates
@@ -102,48 +129,94 @@ export function RaijinRecs() {
         return () => clearInterval(id);
     }, []);
 
-    // Filter out stale recs (>120s) for actionable categories
+    // Filter stale recs (>120s) for actionable categories
     const REC_MAX_AGE_MS = 120_000;
     const visibleRecs = useMemo(() => recommendations.filter(r => {
         if (r.category === 'TIMER' || r.category === 'GENERAL') return true;
         return (now - (r.receivedAt ?? now)) < REC_MAX_AGE_MS;
     }), [recommendations, now]);
 
-    // Connection indicator color
-    const statusColor = connStatus === 'connected' ? '#00b894'
-        : connStatus === 'connecting' ? '#fdcb6e' : '#d63031';
+    const statusColor = connStatus === 'connected' ? pip.green
+        : connStatus === 'connecting' ? pip.amber : pip.red;
+    const statusLabel = connStatus === 'connected' ? 'ONLINE'
+        : connStatus === 'connecting' ? 'SYNC..' : 'OFFLINE';
 
     return (
         <div style={{
             position: 'absolute', top: 0, left: 56, right: 0, bottom: 0,
             display: 'grid',
-            gridTemplateColumns: '1fr 440px',
-            gridTemplateRows: '1fr 180px',
-            gap: 8, padding: 12,
+            gridTemplateColumns: '1fr 420px',
+            gridTemplateRows: '1fr 170px',
+            gap: 2,
+            padding: pip.sp3,
+            background: pip.bgDeep,
+            fontFamily: pip.font,
             pointerEvents: 'auto',
         }}>
-            {/* Connection status */}
+            {/* CRT scanline overlay */}
             <div style={{
-                position: 'absolute', top: 16, right: 16, zIndex: 20,
-                display: 'flex', alignItems: 'center', gap: 6,
+                position: 'absolute', inset: 0,
+                backgroundImage: scanlines,
+                pointerEvents: 'none',
+                zIndex: 10,
+            }} />
+
+            {/* Vignette */}
+            <div style={{
+                position: 'absolute', inset: 0,
+                boxShadow: 'inset 0 0 150px rgba(0, 0, 0, 0.35)',
+                pointerEvents: 'none',
+                zIndex: 11,
+            }} />
+
+            {/* Server controls + Connection status */}
+            <div style={{
+                position: 'absolute', top: pip.sp3, right: pip.sp4, zIndex: 20,
+                fontFamily: pip.font,
+                display: 'flex', alignItems: 'center', gap: pip.sp3,
             }}>
-                <div style={{
-                    width: 8, height: 8, borderRadius: '50%',
-                    background: statusColor,
-                    boxShadow: `0 0 6px ${statusColor}`,
-                }} />
-                <span style={{ fontSize: 10, color: '#636e72' }}>
-                    {connStatus === 'connected' ? 'Raijin Online' : connStatus === 'connecting' ? 'Connecting...' : 'Offline'}
+                <button
+                    onClick={toggleServer}
+                    style={{
+                        background: serverStatus === 'ready' ? pip.bgInset
+                            : serverStatus === 'starting' ? pip.bgInset
+                            : pip.bgDeep,
+                        border: `1px solid ${serverStatus === 'ready' ? pip.green
+                            : serverStatus === 'starting' ? pip.amber
+                            : pip.amberFaint}`,
+                        borderRadius: 0,
+                        padding: '4px 12px',
+                        color: serverStatus === 'ready' ? pip.green
+                            : serverStatus === 'starting' ? pip.amber
+                            : pip.amberDim,
+                        fontSize: pip.textSm,
+                        fontWeight: 700,
+                        fontFamily: pip.font,
+                        letterSpacing: 1,
+                        cursor: serverStatus === 'starting' ? 'wait' : 'pointer',
+                        textShadow: serverStatus === 'ready' ? glowText(pip.green, 4)
+                            : serverStatus === 'starting' ? glowText(pip.amber, 4) : undefined,
+                        boxShadow: serverStatus === 'ready' ? glow(pip.green, 4) : undefined,
+                    }}
+                    disabled={serverStatus === 'starting'}
+                >
+                    {serverStatus === 'ready' ? 'STOP ENGINE'
+                        : serverStatus === 'starting' ? 'STARTING...'
+                        : 'START ENGINE'}
+                </button>
+                <span style={{
+                    fontSize: pip.textSm,
+                    fontWeight: 700,
+                    color: statusColor,
+                    letterSpacing: 1,
+                    textShadow: glowText(statusColor, 6),
+                }}>
+                    [{statusLabel}]
                 </span>
             </div>
 
-            {/* Center: Hero Display */}
             <RaijinHeroDisplay heroData={heroData} recommendations={visibleRecs} />
-
-            {/* Right: Strategy Panel */}
             <RaijinStrategy recommendations={visibleRecs} />
-
-            {/* Bottom: Action Bar */}
             <RaijinActionBar recommendations={visibleRecs} heroData={heroData} />
         </div>
     );

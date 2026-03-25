@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { Server, matchMaker } from 'colyseus';
 import { createServer } from 'http';
+import { spawn, ChildProcess } from 'child_process';
 import { ExternalOfficeRoom, getActiveRoom } from './rooms/ExternalOfficeRoom';
 
 // Setup Express
@@ -99,8 +100,31 @@ app.post('/api/act', async (req, res) => {
         ok = room.agentSpeak(agent, action.message || '');
     } else if (action.type === 'message') {
         ok = room.agentMessage(agent, action.to || '', action.message || '');
+    } else if (action.type === 'chat-bubble') {
+        const duration = typeof action.duration === 'number' ? action.duration : 4.0;
+        ok = room.agentShowSpeechBubble(agent, action.message || '', duration);
+    } else if (action.type === 'handoff') {
+        ok = room.agentHandoff(agent, action.to || '', action.label || '');
     }
     res.json({ ok });
+});
+
+// POST /api/chat-bubble — dedicated endpoint for showing speech bubbles
+// Body: { agent: "agent-pm", message: "Hello!", duration: 4.0 }
+app.post('/api/chat-bubble', async (req, res) => {
+    const room = getRoom();
+    if (!room) {
+        res.status(503).json({ error: 'Office room not ready' });
+        return;
+    }
+    const { agent, message, duration } = req.body;
+    if (!agent || !message) {
+        res.status(400).json({ error: 'agent and message are required' });
+        return;
+    }
+    const durationSec = typeof duration === 'number' ? duration : 4.0;
+    const ok = room.agentShowSpeechBubble(agent, message, durationSec);
+    res.status(ok ? 200 : 404).json({ ok });
 });
 
 // GET /api/inbox — stub (our message bus handles this, not the viz layer)
@@ -126,6 +150,72 @@ app.get('/api/debug/room', (req, res) => {
         agentCount: room.state.agents.size,
         autoDispose: room.autoDispose,
     });
+});
+
+// ============================================================================
+// Raijin Recs Process Management
+// ============================================================================
+
+const RAIJIN_CWD = 'C:\\Users\\311da\\ai-agents';
+let raijinProcess: ChildProcess | null = null;
+
+function isRaijinRunning(): boolean {
+    return raijinProcess !== null && raijinProcess.exitCode === null;
+}
+
+app.get('/api/raijin/status', async (req, res) => {
+    // Check both process state AND whether :4000 is actually responding
+    const processAlive = isRaijinRunning();
+    let serverReady = false;
+    if (processAlive) {
+        try {
+            const ctrl = new AbortController();
+            const timeout = setTimeout(() => ctrl.abort(), 2000);
+            const resp = await fetch('http://localhost:4000/health', { signal: ctrl.signal });
+            clearTimeout(timeout);
+            serverReady = resp.ok;
+        } catch { /* not responding yet */ }
+    }
+    res.json({ running: processAlive, ready: serverReady, pid: raijinProcess?.pid ?? null });
+});
+
+app.post('/api/raijin/start', (req, res) => {
+    if (isRaijinRunning()) {
+        res.json({ ok: true, message: 'Already running', pid: raijinProcess!.pid });
+        return;
+    }
+    console.log('[Raijin] Starting Raijin Recs server...');
+    raijinProcess = spawn('uv', ['run', '--extra', 'raijin', 'python', '-m', 'raijin'], {
+        cwd: RAIJIN_CWD,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        shell: true,
+    });
+
+    raijinProcess.stdout?.on('data', (data: Buffer) => {
+        const line = data.toString().trim();
+        if (line) console.log(`[Raijin] ${line}`);
+    });
+    raijinProcess.stderr?.on('data', (data: Buffer) => {
+        const line = data.toString().trim();
+        if (line) console.log(`[Raijin:err] ${line}`);
+    });
+    raijinProcess.on('exit', (code) => {
+        console.log(`[Raijin] Process exited with code ${code}`);
+        raijinProcess = null;
+    });
+
+    res.json({ ok: true, message: 'Starting', pid: raijinProcess.pid });
+});
+
+app.post('/api/raijin/stop', (req, res) => {
+    if (!isRaijinRunning()) {
+        res.json({ ok: true, message: 'Not running' });
+        return;
+    }
+    console.log('[Raijin] Stopping Raijin Recs server...');
+    raijinProcess!.kill();
+    raijinProcess = null;
+    res.json({ ok: true, message: 'Stopped' });
 });
 
 // ============================================================================
