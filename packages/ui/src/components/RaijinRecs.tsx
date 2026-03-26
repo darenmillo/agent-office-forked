@@ -129,11 +129,18 @@ export function RaijinRecs() {
         return () => clearInterval(id);
     }, []);
 
-    // Filter stale recs (>120s) for actionable categories
-    const REC_MAX_AGE_MS = 300_000;  // 5 min — item recs need time to act on
+    // Category-based expiry — different rec types have different shelf lives
+    const REC_MAX_AGE: Record<string, number> = {
+        ITEM: 600_000,    // 10 min — items take time to farm
+        FIGHT: 600_000,   // 10 min — enemy predictions stay relevant a while
+        SKILL: 120_000,   // 2 min — you either skill it or you don't
+        TIMER: 60_000,    // 1 min — time-sensitive by nature
+        GENERAL: Infinity, // never expire — patch tips, hero knowledge, tower state
+    };
+
     const visibleRecs = useMemo(() => recommendations.filter(r => {
-        if (r.category === 'TIMER' || r.category === 'GENERAL') return true;
-        return (now - (r.receivedAt ?? now)) < REC_MAX_AGE_MS;
+        const maxAge = REC_MAX_AGE[r.category] ?? 300_000;
+        return (now - (r.receivedAt ?? now)) < maxAge;
     }), [recommendations, now]);
 
     const statusColor = connStatus === 'connected' ? pip.green

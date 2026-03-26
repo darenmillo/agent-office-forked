@@ -1,5 +1,6 @@
 import React from 'react';
 import { Recommendation, HeroData } from '../raijinTypes';
+import { pip, panelBase, labelStyle, glow, glowText } from '../raijinTheme';
 
 interface Props {
     recommendations: Recommendation[];
@@ -7,9 +8,7 @@ interface Props {
 }
 
 export function RaijinActionBar({ recommendations, heroData }: Props) {
-    // Top priority recommendation — skip recs older than 60s so stale
-    // "ability point available" etc. don't dominate after the player has acted
-    const ACTION_BAR_MAX_AGE_MS = 60_000;
+    const ACTION_BAR_MAX_AGE_MS = 120_000;
     const now = Date.now();
     const freshRecs = recommendations.filter(r =>
         (now - (r.receivedAt ?? now)) < ACTION_BAR_MAX_AGE_MS
@@ -21,72 +20,118 @@ export function RaijinActionBar({ recommendations, heroData }: Props) {
     const isUrgent = topRec && topRec.priority >= 4;
     const isDead = heroData && !heroData.alive;
 
+    const urgentBorder = isUrgent ? pip.red : pip.amberFaint;
+
     return (
         <div style={{
-            ...panelStyle,
-            borderColor: isUrgent ? 'rgba(244, 67, 54, 0.6)' : 'rgba(244, 67, 54, 0.3)',
+            ...panelBase,
+            gridColumn: '1 / -1',
+            borderColor: urgentBorder,
             animation: isUrgent ? 'raijin-pulse 1.5s ease-in-out infinite' : undefined,
-            boxShadow: isUrgent ? '0 0 20px rgba(244, 67, 54, 0.2)' : undefined,
+            boxShadow: isUrgent ? glow(pip.red, 16) : undefined,
         }}>
             <style>{`
                 @keyframes raijin-pulse {
-                    0%, 100% { border-color: rgba(244, 67, 54, 0.6); box-shadow: 0 0 20px rgba(244, 67, 54, 0.2); }
-                    50% { border-color: rgba(244, 67, 54, 1); box-shadow: 0 0 30px rgba(244, 67, 54, 0.4); }
+                    0%, 100% {
+                        border-color: ${pip.red};
+                        box-shadow: ${glow(pip.red, 12)};
+                    }
+                    50% {
+                        border-color: ${pip.amberBright};
+                        box-shadow: ${glow(pip.red, 24)};
+                    }
                 }
             `}</style>
 
-            <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-                {/* DO THIS NOW — main action */}
+            <div style={{ display: 'flex', gap: pip.sp5, alignItems: 'flex-start' }}>
+                {/* ── Primary Action ── */}
                 <div style={{ flex: 2 }}>
-                    <div style={{ fontSize: 12, color: '#f44336', fontWeight: 700, marginBottom: 6, letterSpacing: 2 }}>
-                        DO THIS NOW
+                    <div style={{
+                        ...labelStyle,
+                        color: isUrgent ? pip.red : pip.amber,
+                        fontSize: pip.textSm,
+                        marginBottom: pip.sp2,
+                        textShadow: isUrgent ? glowText(pip.red, 6) : glowText(pip.amber),
+                    }}>
+                        {'\u25B8'} PRIORITY ACTION
                     </div>
+
                     {isDead ? (
                         <div>
-                            <div style={{ fontSize: 24, fontWeight: 700, color: '#d63031' }}>
-                                DEAD - Respawn {heroData.respawn_seconds}s
+                            <div style={{
+                                fontSize: pip.textXl, fontWeight: 700,
+                                color: pip.red, fontFamily: pip.font,
+                                textShadow: glowText(pip.red, 8),
+                            }}>
+                                DEAD — RESPAWN {heroData.respawn_seconds}s
                             </div>
-                            <div style={{ fontSize: 15, color: '#dfe6e9', marginTop: 4 }}>
-                                Spend your {heroData.gold}g before respawning!
+                            <div style={{
+                                fontSize: pip.textMd, color: pip.amber,
+                                fontFamily: pip.font, marginTop: pip.sp1,
+                            }}>
+                                Spend your {heroData.gold}g before respawning
                             </div>
                         </div>
                     ) : topRec ? (
                         <div>
                             <div style={{
-                                fontSize: isUrgent ? 24 : 18,
+                                fontSize: isUrgent ? pip.textXl : pip.textLg,
                                 fontWeight: 700,
-                                color: isUrgent ? '#f44336' : '#ff9800',
+                                color: isUrgent ? pip.red : pip.amber,
+                                fontFamily: pip.font,
                                 lineHeight: 1.2,
+                                textShadow: isUrgent ? glowText(pip.red, 6) : glowText(pip.amber),
                             }}>
                                 {topRec.title}
                             </div>
-                            <div style={{ fontSize: 14, color: '#dfe6e9', marginTop: 4 }}>
+                            <div style={{
+                                fontSize: pip.textBase, color: pip.amberDim,
+                                fontFamily: pip.font, marginTop: pip.sp1,
+                                lineHeight: 1.5,
+                            }}>
                                 {topRec.body}
                             </div>
                         </div>
                     ) : (
-                        <div style={{ fontSize: 16, color: '#636e72' }}>
+                        <div style={{
+                            fontSize: pip.textMd, color: pip.amberDim,
+                            fontFamily: pip.font, fontStyle: 'italic',
+                        }}>
                             Playing well. Keep farming.
                         </div>
                     )}
                 </div>
 
-                {/* Recent recommendations scroll */}
-                <div style={{ flex: 1, borderLeft: '1px solid rgba(244,67,54,0.2)', paddingLeft: 12 }}>
-                    <div style={{ fontSize: 12, color: '#636e72', marginBottom: 6, letterSpacing: 1, fontWeight: 600 }}>
+                {/* ── Recent Feed ── */}
+                <div style={{
+                    flex: 1,
+                    borderLeft: `2px solid ${pip.amberGhost}`,
+                    paddingLeft: pip.sp4,
+                }}>
+                    <div style={{
+                        ...labelStyle,
+                        marginBottom: pip.sp2,
+                    }}>
                         RECENT
                     </div>
                     {recommendations.slice(0, 4).map((rec, i) => (
                         <div key={i} style={{
-                            fontSize: 12, color: i === 0 ? '#dfe6e9' : '#636e72',
-                            marginBottom: 3, lineHeight: 1.3,
+                            fontSize: pip.textSm,
+                            color: i === 0 ? pip.amber : pip.amberDim,
+                            fontFamily: pip.font,
+                            fontWeight: i === 0 ? 700 : 400,
+                            marginBottom: 3,
+                            lineHeight: 1.3,
                             opacity: 1 - (i * 0.2),
                         }}>
                             {rec.title}
                         </div>
                     ))}
                     {recommendations.length === 0 && (
-                        <div style={{ fontSize: 10, color: '#636e72' }}>
+                        <div style={{
+                            fontSize: pip.textSm, color: pip.amberGhost,
+                            fontFamily: pip.font, fontStyle: 'italic',
+                        }}>
                             No recommendations yet...
                         </div>
                     )}
@@ -95,11 +140,3 @@ export function RaijinActionBar({ recommendations, heroData }: Props) {
         </div>
     );
 }
-
-const panelStyle: React.CSSProperties = {
-    background: 'rgba(40, 10, 10, 0.92)',
-    borderRadius: 12,
-    border: '1px solid rgba(244, 67, 54, 0.3)',
-    padding: 14,
-    gridColumn: '1 / -1',
-};
