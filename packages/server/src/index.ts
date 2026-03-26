@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { Server, matchMaker } from 'colyseus';
 import { createServer } from 'http';
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, execSync, ChildProcess } from 'child_process';
 import { ExternalOfficeRoom, getActiveRoom } from './rooms/ExternalOfficeRoom';
 
 // Setup Express
@@ -184,6 +184,10 @@ app.post('/api/raijin/start', (req, res) => {
         res.json({ ok: true, message: 'Already running', pid: raijinProcess!.pid });
         return;
     }
+    // Kill any orphaned raijin python processes before starting fresh
+    try {
+        execSync('wmic process where "commandline like \'%-m raijin%\'" call terminate 2>nul', { stdio: 'ignore' });
+    } catch { /* no orphans */ }
     console.log('[Raijin] Starting Raijin Recs server...');
     raijinProcess = spawn('uv', ['run', '--extra', 'raijin', 'python', '-m', 'raijin'], {
         cwd: RAIJIN_CWD,
@@ -209,13 +213,25 @@ app.post('/api/raijin/start', (req, res) => {
 
 app.post('/api/raijin/stop', (req, res) => {
     if (!isRaijinRunning()) {
+        // Also kill any orphaned raijin processes on port 4000
+        try {
+            execSync('taskkill /F /FI "WINDOWTITLE eq *raijin*" 2>nul', { stdio: 'ignore' });
+        } catch { /* no orphans */ }
         res.json({ ok: true, message: 'Not running' });
         return;
     }
     console.log('[Raijin] Stopping Raijin Recs server...');
-    raijinProcess!.kill();
+    const pid = raijinProcess!.pid;
+    // On Windows, shell:true means .kill() only kills cmd.exe, not the python child.
+    // Use taskkill /T /F to kill the entire process tree.
+    try {
+        execSync(`taskkill /T /F /PID ${pid}`, { stdio: 'ignore' });
+    } catch {
+        // Fallback: try regular kill
+        raijinProcess!.kill();
+    }
     raijinProcess = null;
-    res.json({ ok: true, message: 'Stopped' });
+    res.json({ ok: true, message: 'Stopped', killed_pid: pid });
 });
 
 // ============================================================================
