@@ -1,10 +1,10 @@
 import React, { useState, useCallback } from 'react';
 import { HeroData, Recommendation, RAIJIN_API } from '../raijinTypes';
+import { pip, panelBase, labelStyle, glow, glowText } from '../raijinTheme';
 
 const STEAM_CDN_HEROES = 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes';
 const STEAM_CDN_ITEMS = 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/items';
 
-/** Some GSI item names don't match the CDN filename exactly. */
 const ITEM_NAME_FIXES: Record<string, string> = {
     tpscroll: 'tp_scroll',
     tp_scroll: 'tp_scroll',
@@ -32,57 +32,39 @@ function formatTime(seconds: number): string {
     return `${neg ? '-' : ''}${m}:${s.toString().padStart(2, '0')}`;
 }
 
-/* ------------------------------------------------------------------ */
-/*  Item Slot — shows icon with fallback to text pill                 */
-/* ------------------------------------------------------------------ */
+/* ── Item Slot ── */
 function ItemSlot({ name, size }: { name: string | null; size: number }) {
     const [failed, setFailed] = useState(false);
-
     const handleError = useCallback(() => setFailed(true), []);
 
     const slotBase: React.CSSProperties = {
         width: size,
         height: size,
-        borderRadius: 4,
-        border: '1px solid rgba(79, 195, 247, 0.25)',
+        border: `1px solid ${pip.amberFaint}`,
+        borderRadius: 0,
         overflow: 'hidden',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        position: 'relative',
+        fontFamily: pip.font,
         flexShrink: 0,
     };
 
-    // Empty slot
     if (!name) {
-        return (
-            <div style={{
-                ...slotBase,
-                background: 'rgba(0, 0, 0, 0.35)',
-                opacity: 0.4,
-            }} />
-        );
+        return <div style={{ ...slotBase, background: pip.bgDeep, opacity: 0.35 }} />;
     }
 
     const cdnName = itemCdnName(name);
     const url = `${STEAM_CDN_ITEMS}/${cdnName}.png`;
     const display = itemDisplayName(name);
 
-    // Fallback text pill when image fails
     if (failed) {
         return (
-            <div
-                title={display}
-                style={{
-                    ...slotBase,
-                    background: 'rgba(79, 195, 247, 0.1)',
-                    padding: 2,
-                }}
-            >
+            <div title={display} style={{ ...slotBase, background: pip.bgInset, padding: 2 }}>
                 <span style={{
-                    fontSize: Math.max(8, size / 4.5),
-                    color: '#dfe6e9',
-                    fontWeight: 500,
+                    fontSize: Math.max(9, size / 4),
+                    color: pip.amberDim,
+                    fontWeight: 600,
                     textAlign: 'center',
                     lineHeight: 1.1,
                     overflow: 'hidden',
@@ -96,38 +78,19 @@ function ItemSlot({ name, size }: { name: string | null; size: number }) {
     }
 
     return (
-        <div
-            title={display}
-            style={{
-                ...slotBase,
-                background: 'rgba(0, 0, 0, 0.4)',
-                boxShadow: '0 0 6px rgba(79, 195, 247, 0.2)',
-            }}
-        >
+        <div title={display} style={{ ...slotBase, background: pip.bgDeep }}>
             <img
-                src={url}
-                alt={display}
-                onError={handleError}
-                style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'cover',
-                    display: 'block',
-                }}
+                src={url} alt={display} onError={handleError}
+                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
             />
         </div>
     );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Items Grid — [6 main] | [3 backpack] | [neutral] | [TP]          */
-/* ------------------------------------------------------------------ */
+/* ── Items Grid ── */
 function ItemsGrid({ items }: { items: string[] }) {
-    // Pad to at least 11 slots: 6 main + 3 backpack + 1 neutral + 1 TP
     const padded: (string | null)[] = [];
-    for (let i = 0; i < 11; i++) {
-        padded.push(items[i] ?? null);
-    }
+    for (let i = 0; i < 11; i++) padded.push(items[i] ?? null);
 
     const main = padded.slice(0, 6);
     const backpack = padded.slice(6, 9);
@@ -135,52 +98,42 @@ function ItemsGrid({ items }: { items: string[] }) {
     const tp = padded[10];
 
     return (
-        <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 12, color: '#636e72', marginBottom: 6, fontWeight: 600 }}>ITEMS</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ marginBottom: pip.sp4 }}>
+            <div style={{ ...labelStyle, marginBottom: pip.sp2 }}>INVENTORY</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: pip.sp3 }}>
                 {/* 6 main slots */}
-                <div style={{ display: 'flex', gap: 4 }}>
-                    {main.map((item, i) => (
-                        <ItemSlot key={`main-${i}`} name={item} size={36} />
-                    ))}
-                </div>
-
-                {/* Separator */}
-                <div style={{
-                    width: 1, height: 28,
-                    background: 'rgba(79, 195, 247, 0.2)',
-                    flexShrink: 0,
-                }} />
-
-                {/* 3 backpack slots — slightly smaller */}
                 <div style={{ display: 'flex', gap: 3 }}>
-                    {backpack.map((item, i) => (
-                        <ItemSlot key={`bp-${i}`} name={item} size={28} />
-                    ))}
+                    {main.map((item, i) => <ItemSlot key={`m-${i}`} name={item} size={38} />)}
                 </div>
 
                 {/* Separator */}
-                <div style={{
-                    width: 1, height: 28,
-                    background: 'rgba(79, 195, 247, 0.2)',
-                    flexShrink: 0,
-                }} />
+                <div style={{ width: 2, height: 30, background: pip.amberFaint, flexShrink: 0 }} />
 
-                {/* Neutral item */}
+                {/* 3 backpack */}
+                <div style={{ display: 'flex', gap: 3 }}>
+                    {backpack.map((item, i) => <ItemSlot key={`b-${i}`} name={item} size={30} />)}
+                </div>
+
+                {/* Separator */}
+                <div style={{ width: 2, height: 30, background: pip.amberFaint, flexShrink: 0 }} />
+
+                {/* Neutral */}
                 <div style={{ position: 'relative' }}>
-                    <ItemSlot name={neutral} size={30} />
+                    <ItemSlot name={neutral} size={32} />
                     <div style={{
-                        position: 'absolute', bottom: -10, left: 0, right: 0,
-                        textAlign: 'center', fontSize: 8, color: '#636e72', fontWeight: 600,
+                        ...labelStyle, position: 'absolute', bottom: -14,
+                        left: 0, right: 0, textAlign: 'center',
+                        fontSize: 9, letterSpacing: 1,
                     }}>N</div>
                 </div>
 
                 {/* TP */}
                 <div style={{ position: 'relative' }}>
-                    <ItemSlot name={tp} size={30} />
+                    <ItemSlot name={tp} size={32} />
                     <div style={{
-                        position: 'absolute', bottom: -10, left: 0, right: 0,
-                        textAlign: 'center', fontSize: 8, color: '#636e72', fontWeight: 600,
+                        ...labelStyle, position: 'absolute', bottom: -14,
+                        left: 0, right: 0, textAlign: 'center',
+                        fontSize: 9, letterSpacing: 1,
                     }}>TP</div>
                 </div>
             </div>
@@ -188,27 +141,51 @@ function ItemsGrid({ items }: { items: string[] }) {
     );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Main Component                                                     */
-/* ------------------------------------------------------------------ */
+/* ── Stat Cell ── */
+function Stat({ label, value, color }: { label: string; value: string | number; color?: string }) {
+    const c = color || pip.amber;
+    return (
+        <div style={{ textAlign: 'center', flex: 1 }}>
+            <div style={{
+                fontSize: pip.textLg,
+                fontWeight: 700,
+                color: c,
+                fontFamily: pip.font,
+                textShadow: glowText(c),
+                fontVariantNumeric: 'tabular-nums',
+            }}>
+                {value}
+            </div>
+            <div style={{ ...labelStyle, fontSize: pip.textXs }}>{label}</div>
+        </div>
+    );
+}
+
+/* ── Main Component ── */
 export function RaijinHeroDisplay({ heroData, recommendations }: Props) {
     const heroName = heroData?.hero_name || null;
     const portraitUrl = heroName ? `${RAIJIN_API}/api/portrait/${heroName}` : null;
     const fallbackUrl = heroName ? `${STEAM_CDN_HEROES}/${heroName}.png` : null;
 
-    // Find next item recommendation
     const itemRec = recommendations.find(r => r.category === 'ITEM' && r.priority >= 3);
-    // Find skill recommendation
     const skillRec = recommendations.find(r => r.category === 'SKILL');
 
     if (!heroData) {
         return (
             <div style={{
-                ...panelStyle,
+                ...panelBase,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-                <div style={{ textAlign: 'center', color: '#4fc3f7', fontSize: 22, fontWeight: 600 }}>
-                    Waiting for Dota 2...
+                <div style={{
+                    textAlign: 'center',
+                    color: pip.amber,
+                    fontSize: pip.textXl,
+                    fontWeight: 700,
+                    fontFamily: pip.font,
+                    textShadow: glowText(pip.amber, 8),
+                    letterSpacing: 3,
+                }}>
+                    AWAITING SIGNAL...
                 </div>
             </div>
         );
@@ -216,35 +193,30 @@ export function RaijinHeroDisplay({ heroData, recommendations }: Props) {
 
     const hpPct = heroData.max_health > 0 ? (heroData.health / heroData.max_health) * 100 : 0;
     const manaPct = heroData.max_mana > 0 ? (heroData.mana / heroData.max_mana) * 100 : 0;
-    const hpColor = hpPct > 50 ? '#00b894' : hpPct > 25 ? '#fdcb6e' : '#d63031';
+    const hpColor = hpPct > 50 ? pip.green : hpPct > 25 ? pip.amber : pip.red;
 
     return (
-        <div style={panelStyle}>
-            {/* Zoltar Portrait — large and prominent */}
-            <div style={{
-                display: 'flex', justifyContent: 'center', marginBottom: 16,
-            }}>
+        <div style={{ ...panelBase, overflowY: 'auto' }}>
+            {/* ── Portrait ── */}
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: pip.sp4 }}>
                 <div style={{
-                    width: 320, height: 200, borderRadius: 12, overflow: 'hidden',
-                    border: '2px solid rgba(79, 195, 247, 0.5)',
-                    boxShadow: '0 0 30px rgba(79, 195, 247, 0.3), 0 0 60px rgba(79, 195, 247, 0.1)',
-                    background: 'rgba(0,0,0,0.5)', position: 'relative',
+                    width: 320, height: 200,
+                    border: `2px solid ${pip.amber}`,
+                    boxShadow: `${glow(pip.amber, 12)}, inset 0 0 40px rgba(0,0,0,0.6)`,
+                    background: pip.bgDeep,
+                    position: 'relative', overflow: 'hidden',
                 }}>
                     {portraitUrl && (
                         <video
-                            src={portraitUrl}
-                            autoPlay loop muted playsInline
+                            src={portraitUrl} autoPlay loop muted playsInline
                             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                             onError={(e) => {
                                 const el = e.currentTarget;
-                                if (fallbackUrl) {
-                                    const parent = el.parentElement;
-                                    if (parent) {
-                                        el.style.display = 'none';
-                                        parent.style.backgroundImage = `url(${fallbackUrl})`;
-                                        parent.style.backgroundSize = 'cover';
-                                        parent.style.backgroundPosition = 'center';
-                                    }
+                                if (fallbackUrl && el.parentElement) {
+                                    el.style.display = 'none';
+                                    el.parentElement.style.backgroundImage = `url(${fallbackUrl})`;
+                                    el.parentElement.style.backgroundSize = 'cover';
+                                    el.parentElement.style.backgroundPosition = 'center';
                                 }
                             }}
                         />
@@ -252,127 +224,97 @@ export function RaijinHeroDisplay({ heroData, recommendations }: Props) {
                     {/* Hero name overlay */}
                     <div style={{
                         position: 'absolute', bottom: 0, left: 0, right: 0,
-                        background: 'linear-gradient(transparent, rgba(0,0,0,0.85))',
-                        padding: '12px 10px 6px', textAlign: 'center',
-                        fontSize: 16, fontWeight: 700, color: '#4fc3f7',
-                        textTransform: 'uppercase', letterSpacing: 2,
+                        background: `linear-gradient(transparent, ${pip.bgDeep}ee)`,
+                        padding: '16px 12px 8px',
+                        textAlign: 'center',
+                        fontSize: pip.textMd, fontWeight: 700,
+                        color: pip.amber,
+                        textTransform: 'uppercase',
+                        letterSpacing: 3,
+                        fontFamily: pip.font,
+                        textShadow: glowText(pip.amber, 6),
                     }}>
                         {heroName?.replace(/_/g, ' ')}
                     </div>
                 </div>
             </div>
 
-            {/* HP / Mana bars */}
-            <div style={{ marginBottom: 12 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                    <span style={{ fontSize: 13, color: '#b2bec3', width: 28, fontWeight: 600 }}>HP</span>
-                    <div style={{ flex: 1, height: 14, background: 'rgba(0,0,0,0.4)', borderRadius: 4 }}>
-                        <div style={{
-                            width: `${hpPct}%`, height: '100%', borderRadius: 4,
-                            background: hpColor, transition: 'width 0.3s',
-                        }} />
-                    </div>
-                    <span style={{ fontSize: 13, color: '#dfe6e9', width: 80, textAlign: 'right', fontWeight: 500 }}>
-                        {heroData.health}/{heroData.max_health}
-                    </span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 13, color: '#b2bec3', width: 28, fontWeight: 600 }}>MP</span>
-                    <div style={{ flex: 1, height: 14, background: 'rgba(0,0,0,0.4)', borderRadius: 4 }}>
-                        <div style={{
-                            width: `${manaPct}%`, height: '100%', borderRadius: 4,
-                            background: '#74b9ff', transition: 'width 0.3s',
-                        }} />
-                    </div>
-                    <span style={{ fontSize: 13, color: '#dfe6e9', width: 80, textAlign: 'right', fontWeight: 500 }}>
-                        {heroData.mana}/{heroData.max_mana}
-                    </span>
-                </div>
+            {/* ── HP / Mana ── */}
+            <div style={{ marginBottom: pip.sp4 }}>
+                <BarRow label="HP" pct={hpPct} color={hpColor} text={`${heroData.health}/${heroData.max_health}`} />
+                <BarRow label="MP" pct={manaPct} color={pip.blue} text={`${heroData.mana}/${heroData.max_mana}`} textColor={pip.blue} />
             </div>
 
-            {/* Stats row */}
+            {/* ── Stats ── */}
             <div style={{
-                display: 'flex', justifyContent: 'space-around', alignItems: 'center',
-                padding: '10px 0', borderTop: '1px solid rgba(79,195,247,0.15)',
-                borderBottom: '1px solid rgba(79,195,247,0.15)', marginBottom: 12,
+                display: 'flex', justifyContent: 'space-around',
+                padding: `${pip.sp3}px 0`,
+                borderTop: `1px solid ${pip.amberFaint}`,
+                borderBottom: `1px solid ${pip.amberFaint}`,
+                marginBottom: pip.sp4,
             }}>
-                <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: 28, fontWeight: 700, color: '#4fc3f7' }}>
-                        {heroData.level}
-                    </div>
-                    <div style={{ fontSize: 11, color: '#636e72', fontWeight: 600 }}>LEVEL</div>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: 22, fontWeight: 600, color: '#dfe6e9' }}>
-                        {heroData.kills}/{heroData.deaths}/{heroData.assists}
-                    </div>
-                    <div style={{ fontSize: 11, color: '#636e72', fontWeight: 600 }}>KDA</div>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: 20, fontWeight: 600, color: '#fdcb6e' }}>
-                        {heroData.gold}
-                    </div>
-                    <div style={{ fontSize: 11, color: '#636e72', fontWeight: 600 }}>GOLD</div>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: 18, fontWeight: 600, color: '#dfe6e9' }}>
-                        {heroData.gpm}
-                    </div>
-                    <div style={{ fontSize: 11, color: '#636e72', fontWeight: 600 }}>GPM</div>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                    <div style={{ fontSize: 18, fontWeight: 600, color: '#dfe6e9' }}>
-                        {heroData.last_hits}
-                    </div>
-                    <div style={{ fontSize: 11, color: '#636e72', fontWeight: 600 }}>LH</div>
-                </div>
+                <Stat label="LVL" value={heroData.level} />
+                <Stat label="KDA" value={`${heroData.kills}/${heroData.deaths}/${heroData.assists}`} color={pip.amberBright} />
+                <Stat label="GOLD" value={heroData.gold} color={pip.amberBright} />
+                <Stat label="GPM" value={heroData.gpm} />
+                <Stat label="LH" value={heroData.last_hits} />
             </div>
 
-            {/* Clock + alive status */}
+            {/* ── Clock + Status ── */}
             <div style={{
-                display: 'flex', justifyContent: 'space-between', marginBottom: 12,
-                fontSize: 15, color: '#b2bec3', fontWeight: 500,
+                display: 'flex', justifyContent: 'space-between',
+                marginBottom: pip.sp4,
+                fontSize: pip.textBase, color: pip.amberDim,
+                fontFamily: pip.font, fontWeight: 600,
             }}>
-                <span>{formatTime(heroData.clock_time)}</span>
+                <span style={{ textShadow: glowText(pip.amberDim) }}>
+                    {formatTime(heroData.clock_time)}
+                </span>
                 {!heroData.alive && (
-                    <span style={{ color: '#d63031', fontWeight: 700, fontSize: 16 }}>
-                        DEAD - Respawn: {heroData.respawn_seconds}s
+                    <span style={{
+                        color: pip.red, fontWeight: 700,
+                        textShadow: glowText(pip.red, 6),
+                    }}>
+                        DEAD — RESPAWN {heroData.respawn_seconds}s
                     </span>
                 )}
-                <span>Reliable: {heroData.gold_reliable}g</span>
+                <span>RELIABLE: {heroData.gold_reliable}g</span>
             </div>
 
-            {/* Items grid — icon-based with CDN images */}
+            {/* ── Items ── */}
             <ItemsGrid items={heroData.items} />
 
-            {/* Next item recommendation */}
+            {/* ── Item Recommendation ── */}
             {itemRec && (
-                <div style={{
-                    padding: 12, borderRadius: 8, marginBottom: 10,
-                    background: 'rgba(253,203,110,0.1)',
-                    border: '1px solid rgba(253,203,110,0.3)',
-                }}>
-                    <div style={{ fontSize: 15, fontWeight: 600, color: '#fdcb6e' }}>
-                        {itemRec.title}
-                    </div>
-                    <div style={{ fontSize: 13, color: '#dfe6e9', marginTop: 4 }}>
-                        {itemRec.body}
-                    </div>
-                </div>
+                <RecHighlight accent={pip.catItem} title={itemRec.title} body={itemRec.body} />
             )}
 
-            {/* Skill recommendation */}
+            {/* ── Skill Recommendation ── */}
             {skillRec && (
-                <div style={{
-                    padding: 12, borderRadius: 8,
-                    background: 'rgba(79,195,247,0.1)',
-                    border: '1px solid rgba(79,195,247,0.3)',
-                }}>
-                    <div style={{ fontSize: 15, fontWeight: 600, color: '#4fc3f7' }}>
-                        {skillRec.title}
+                <RecHighlight accent={pip.amber} title={skillRec.title} body={skillRec.body} />
+            )}
+
+            {/* ── Enemy Heroes (if known) ── */}
+            {heroData.enemy_heroes && heroData.enemy_heroes.length > 0 && (
+                <div style={{ marginTop: pip.sp4, borderTop: `1px solid ${pip.amberFaint}`, paddingTop: pip.sp3 }}>
+                    <div style={{ ...labelStyle, marginBottom: pip.sp2, color: pip.catFight }}>
+                        ENEMIES
                     </div>
-                    <div style={{ fontSize: 13, color: '#dfe6e9', marginTop: 4 }}>
-                        {skillRec.body}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: pip.sp2 }}>
+                        {heroData.enemy_heroes.map((enemy, i) => (
+                            <div key={i} style={{
+                                padding: `${pip.sp1}px ${pip.sp2}px`,
+                                background: pip.bgInset,
+                                border: `1px solid ${pip.amberGhost}`,
+                                fontSize: pip.textSm,
+                                color: pip.amberDim,
+                                fontFamily: pip.font,
+                                fontWeight: 600,
+                                textTransform: 'capitalize',
+                            }}>
+                                {enemy.replace(/_/g, ' ')}
+                            </div>
+                        ))}
                     </div>
                 </div>
             )}
@@ -380,10 +322,61 @@ export function RaijinHeroDisplay({ heroData, recommendations }: Props) {
     );
 }
 
-const panelStyle: React.CSSProperties = {
-    background: 'rgba(20, 40, 80, 0.92)',
-    borderRadius: 12,
-    border: '1px solid rgba(79, 195, 247, 0.3)',
-    padding: 20,
-    overflowY: 'auto',
-};
+/* ── Bar Row (HP / Mana) ── */
+function BarRow({ label, pct, color, text, textColor }: {
+    label: string; pct: number; color: string; text: string; textColor?: string;
+}) {
+    return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: pip.sp2, marginBottom: pip.sp1 }}>
+            <span style={{ ...labelStyle, width: 24, fontSize: pip.textSm }}>{label}</span>
+            <div style={{
+                flex: 1, height: 16,
+                background: pip.bgDeep,
+                border: `1px solid ${pip.amberGhost}`,
+            }}>
+                <div style={{
+                    width: `${pct}%`, height: '100%',
+                    background: color,
+                    transition: 'width 0.3s',
+                    boxShadow: pct > 0 ? `0 0 6px ${color}44` : undefined,
+                }} />
+            </div>
+            <span style={{
+                fontSize: pip.textBase,
+                color: textColor || pip.amber,
+                fontFamily: pip.font,
+                fontWeight: 600,
+                width: 100, textAlign: 'right',
+                fontVariantNumeric: 'tabular-nums',
+            }}>
+                {text}
+            </span>
+        </div>
+    );
+}
+
+/* ── Recommendation Highlight ── */
+function RecHighlight({ accent, title, body }: { accent: string; title: string; body: string }) {
+    return (
+        <div style={{
+            padding: pip.sp3,
+            marginBottom: pip.sp2,
+            background: pip.bgInset,
+            borderLeft: `3px solid ${accent}`,
+        }}>
+            <div style={{
+                fontSize: pip.textMd, fontWeight: 700,
+                color: accent, fontFamily: pip.font,
+            }}>
+                {title}
+            </div>
+            <div style={{
+                fontSize: pip.textBase, color: pip.amberDim,
+                fontFamily: pip.font, marginTop: pip.sp1,
+                lineHeight: 1.5,
+            }}>
+                {body}
+            </div>
+        </div>
+    );
+}

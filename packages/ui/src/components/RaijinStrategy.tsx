@@ -1,161 +1,226 @@
 import React, { useState } from 'react';
 import { Recommendation } from '../raijinTypes';
+import { pip, panelBase, labelStyle, glowText } from '../raijinTheme';
 
 interface Props {
     recommendations: Recommendation[];
 }
 
+/** Category accent mapping */
+const CAT_ACCENT: Record<string, string> = {
+    coach: pip.catCoach,
+    items: pip.catItem,
+    timers: pip.catTimer,
+    fight: pip.catFight,
+    recent: pip.catRecent,
+};
+
 export function RaijinStrategy({ recommendations }: Props) {
     const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-
     const toggle = (key: string) => setCollapsed(prev => ({ ...prev, [key]: !prev[key] }));
 
-    // Split recommendations by type
     const general = recommendations.filter(r => r.tier === 'ANALYTICAL');
     const timers = recommendations.filter(r => r.category === 'TIMER');
     const items = recommendations.filter(r => r.category === 'ITEM');
     const fight = recommendations.filter(r => r.category === 'FIGHT');
+    // Separate patch tips + hero knowledge (GENERAL non-LLM) from Raijin Says
+    const knowledge = recommendations.filter(r =>
+        r.category === 'GENERAL' && r.tier !== 'ANALYTICAL' &&
+        (r.title.includes('7.41') || r.title.includes('How to play') || r.title.includes('When to fight') ||
+         r.title.includes('Tower') || r.title.includes('Roshan'))
+    );
 
     return (
-        <div style={panelStyle}>
-            <h3 style={{ margin: '0 0 14px', fontSize: 20, color: '#b0bec5', fontWeight: 700 }}>
-                Strategy
+        <div style={{ ...panelBase, overflowY: 'auto' }}>
+            <h3 style={{
+                margin: '0 0 12px',
+                fontSize: pip.textLg,
+                color: pip.amber,
+                fontWeight: 700,
+                fontFamily: pip.font,
+                letterSpacing: 3,
+                textTransform: 'uppercase',
+                textShadow: glowText(pip.amber),
+                borderBottom: `2px solid ${pip.amberFaint}`,
+                paddingBottom: pip.sp2,
+            }}>
+                STRATEGY
             </h3>
 
-            {/* LLM Coaching Advice */}
+            {/* FIGHT + ENEMY PREDICTIONS — most time-sensitive */}
             <Section
-                title="Raijin Says"
-                count={general.length}
-                collapsed={collapsed['general']}
-                onToggle={() => toggle('general')}
-            >
-                {general.length === 0 ? (
-                    <div style={{ fontSize: 14, color: '#636e72' }}>
-                        Coaching advice appears here during the game...
-                    </div>
-                ) : (
-                    general.slice(0, 5).map((rec, i) => (
-                        <RecCard key={i} rec={rec} accent="#5c6bc0" />
-                    ))
-                )}
-            </Section>
-
-            {/* Item Advice */}
-            <Section
-                title="Item Advice"
-                count={items.length}
-                collapsed={collapsed['items']}
-                onToggle={() => toggle('items')}
-            >
-                {items.length === 0 ? (
-                    <div style={{ fontSize: 14, color: '#636e72' }}>
-                        Item suggestions will appear based on enemy lineup.
-                    </div>
-                ) : (
-                    items.slice(0, 6).map((rec, i) => (
-                        <RecCard key={i} rec={rec} accent="#fdcb6e" />
-                    ))
-                )}
-            </Section>
-
-            {/* Timers */}
-            <Section
-                title="Timers"
-                count={timers.length}
-                collapsed={collapsed['timers']}
-                onToggle={() => toggle('timers')}
-            >
-                {timers.length === 0 ? (
-                    <div style={{ fontSize: 14, color: '#636e72' }}>
-                        Stack, rune, and Roshan timers will appear here.
-                    </div>
-                ) : (
-                    timers.slice(0, 5).map((rec, i) => (
-                        <RecCard key={i} rec={rec} accent="#00b894" />
-                    ))
-                )}
-            </Section>
-
-            {/* Fight Advice */}
-            <Section
-                title="Fight Targets"
+                title="ENEMY INTEL"
                 count={fight.length}
                 collapsed={collapsed['fight']}
                 onToggle={() => toggle('fight')}
+                accent={CAT_ACCENT.fight}
             >
                 {fight.length === 0 ? (
-                    <div style={{ fontSize: 14, color: '#636e72' }}>
-                        Fight prioritization will appear once scouting is loaded.
-                    </div>
+                    <EmptyHint>Enemy predictions + fight targets appear once enemies are set.</EmptyHint>
                 ) : (
                     fight.slice(0, 5).map((rec, i) => (
-                        <RecCard key={i} rec={rec} accent="#d63031" />
+                        <RecCard key={i} rec={rec} accent={CAT_ACCENT.fight} />
                     ))
                 )}
             </Section>
 
-            {/* All recent recommendations log */}
+            {/* ITEM ADVICE — actionable */}
             <Section
-                title="Recent"
-                count={recommendations.length}
-                collapsed={collapsed['recent']}
-                onToggle={() => toggle('recent')}
+                title="ITEM ADVICE"
+                count={items.length}
+                collapsed={collapsed['items']}
+                onToggle={() => toggle('items')}
+                accent={CAT_ACCENT.items}
             >
-                {recommendations.slice(0, 10).map((rec, i) => (
-                    <RecCard key={i} rec={rec} accent="#636e72" />
-                ))}
+                {items.length === 0 ? (
+                    <EmptyHint>Item suggestions will appear based on enemy lineup.</EmptyHint>
+                ) : (
+                    items.slice(0, 5).map((rec, i) => (
+                        <RecCard key={i} rec={rec} accent={CAT_ACCENT.items} />
+                    ))
+                )}
+            </Section>
+
+            {/* RAIJIN SAYS — LLM coaching, limited to 2 to not dominate */}
+            <Section
+                title="RAIJIN SAYS"
+                count={general.length}
+                collapsed={collapsed['general']}
+                onToggle={() => toggle('general')}
+                accent={CAT_ACCENT.coach}
+            >
+                {general.length === 0 ? (
+                    <EmptyHint>Coaching advice appears at milestones + on death.</EmptyHint>
+                ) : (
+                    general.slice(0, 2).map((rec, i) => (
+                        <RecCard key={i} rec={rec} accent={CAT_ACCENT.coach} />
+                    ))
+                )}
+            </Section>
+
+            {/* KNOWLEDGE — patch tips, hero playstyle, tower state */}
+            {knowledge.length > 0 && (
+                <Section
+                    title="GAME INTEL"
+                    count={knowledge.length}
+                    collapsed={collapsed['knowledge']}
+                    onToggle={() => toggle('knowledge')}
+                    accent={pip.amberBright}
+                >
+                    {knowledge.slice(0, 4).map((rec, i) => (
+                        <RecCard key={i} rec={rec} accent={pip.amberBright} />
+                    ))}
+                </Section>
+            )}
+
+            {/* TIMERS — least urgent, at bottom */}
+            <Section
+                title="TIMERS"
+                count={timers.length}
+                collapsed={collapsed['timers'] ?? true}
+                onToggle={() => toggle('timers')}
+                accent={CAT_ACCENT.timers}
+            >
+                {timers.length === 0 ? (
+                    <EmptyHint>Stack, rune, and Roshan timers.</EmptyHint>
+                ) : (
+                    timers.slice(0, 4).map((rec, i) => (
+                        <RecCard key={i} rec={rec} accent={CAT_ACCENT.timers} />
+                    ))
+                )}
             </Section>
         </div>
     );
 }
 
-function Section({ title, count, collapsed, onToggle, children }: {
+/* ── Collapsible Section ── */
+function Section({ title, count, collapsed, onToggle, accent, children }: {
     title: string; count: number; collapsed?: boolean;
-    onToggle: () => void; children: React.ReactNode;
+    onToggle: () => void; accent: string; children: React.ReactNode;
 }) {
     return (
-        <div style={{ marginBottom: 14 }}>
+        <div style={{ marginBottom: pip.sp4 }}>
             <div
                 onClick={onToggle}
                 style={{
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    cursor: 'pointer', padding: '6px 0', borderBottom: '1px solid rgba(92,107,192,0.2)',
-                    marginBottom: 8,
+                    cursor: 'pointer',
+                    padding: `${pip.sp1}px 0`,
+                    borderBottom: `1px solid ${pip.amberGhost}`,
+                    marginBottom: pip.sp2,
+                    transition: 'background 0.15s',
                 }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = pip.bgHover; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
             >
-                <span style={{ fontSize: 16, fontWeight: 600, color: '#b0bec5' }}>{title}</span>
-                <span style={{ fontSize: 13, color: '#636e72' }}>
-                    {count > 0 && `(${count}) `}{collapsed ? '>' : 'v'}
+                <span style={{
+                    fontSize: pip.textBase,
+                    fontWeight: 700,
+                    color: accent,
+                    fontFamily: pip.font,
+                    letterSpacing: 1,
+                }}>
+                    {collapsed ? '\u25B6' : '\u25BC'} {title}
                 </span>
+                {count > 0 && (
+                    <span style={{
+                        fontSize: pip.textSm,
+                        color: pip.amberDim,
+                        fontFamily: pip.font,
+                        fontWeight: 600,
+                    }}>
+                        ({count})
+                    </span>
+                )}
             </div>
             {!collapsed && children}
         </div>
     );
 }
 
+/* ── Recommendation Card ── */
 function RecCard({ rec, accent }: { rec: Recommendation; accent: string }) {
     const isUrgent = rec.priority >= 4;
     return (
         <div style={{
             borderLeft: `3px solid ${accent}`,
-            padding: '6px 10px', marginBottom: 6,
-            background: isUrgent ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.03)',
-            borderRadius: '0 6px 6px 0',
+            padding: `${pip.sp2}px ${pip.sp3}px`,
+            marginBottom: pip.sp2,
+            background: isUrgent ? pip.bgHover : pip.bgInset,
         }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#dfe6e9' }}>
+            <div style={{
+                fontSize: pip.textBase,
+                fontWeight: 700,
+                color: isUrgent ? pip.amber : pip.amberDim,
+                fontFamily: pip.font,
+            }}>
                 {rec.title}
             </div>
-            <div style={{ fontSize: 13, color: '#b2bec3', marginTop: 3, lineHeight: 1.4 }}>
+            <div style={{
+                fontSize: pip.textBase,
+                color: pip.amberDim,
+                fontFamily: pip.font,
+                marginTop: pip.sp1,
+                lineHeight: 1.5,
+                opacity: 0.85,
+            }}>
                 {rec.body}
             </div>
         </div>
     );
 }
 
-const panelStyle: React.CSSProperties = {
-    background: 'rgba(10, 15, 40, 0.92)',
-    borderRadius: 12,
-    border: '1px solid rgba(92, 107, 192, 0.3)',
-    padding: 18,
-    overflowY: 'auto',
-};
+/* ── Empty state hint ── */
+function EmptyHint({ children }: { children: React.ReactNode }) {
+    return (
+        <div style={{
+            fontSize: pip.textBase,
+            color: pip.amberGhost,
+            fontFamily: pip.font,
+            fontStyle: 'italic',
+            padding: `${pip.sp1}px 0`,
+        }}>
+            {children}
+        </div>
+    );
+}

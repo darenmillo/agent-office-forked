@@ -130,7 +130,7 @@ export function RaijinRecs() {
     }, []);
 
     // Filter stale recs (>120s) for actionable categories
-    const REC_MAX_AGE_MS = 120_000;
+    const REC_MAX_AGE_MS = 300_000;  // 5 min — item recs need time to act on
     const visibleRecs = useMemo(() => recommendations.filter(r => {
         if (r.category === 'TIMER' || r.category === 'GENERAL') return true;
         return (now - (r.receivedAt ?? now)) < REC_MAX_AGE_MS;
@@ -145,8 +145,8 @@ export function RaijinRecs() {
         <div style={{
             position: 'absolute', top: 0, left: 56, right: 0, bottom: 0,
             display: 'grid',
-            gridTemplateColumns: '1fr 420px',
-            gridTemplateRows: '1fr 170px',
+            gridTemplateColumns: '1fr 520px',
+            gridTemplateRows: '1fr 190px',
             gap: 2,
             padding: pip.sp3,
             background: pip.bgDeep,
