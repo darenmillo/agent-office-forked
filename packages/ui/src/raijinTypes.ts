@@ -44,10 +44,40 @@ export interface Recommendation {
 }
 
 export interface UIUpdate {
-    type: 'hero_status' | 'recommendations' | 'game_plan' | 'action_bar' | 'connection' | 'game_ended';
+    type: 'hero_status' | 'recommendations' | 'game_plan' | 'action_bar' | 'connection' | 'game_ended' | 'enemy_intel';
     data: Record<string, unknown>;
     timestamp: number;
 }
 
+/** Per-player data from GC Bot GetRealtimeStats (~2 min delayed). */
+export interface EnemyPlayerData {
+    hero_id: number;
+    hero_name: string;
+    team: string;       // "radiant" | "dire"
+    level: number;
+    kills: number;
+    deaths: number;
+    assists: number;
+    items: string[];    // up to 6 item keys
+    net_worth: number;
+    ultimate_state: number;    // always 0 (not available from API)
+    ultimate_cooldown: number; // always 0
+    respawn_timer: number;     // always 0
+}
+
+/** Full match intel from GC Bot, broadcast every ~8s. */
+export interface EnemyIntelData {
+    game_time: number;
+    delay_seconds: number;
+    radiant_score: number;
+    dire_score: number;
+    radiant_tower_state: number;
+    dire_tower_state: number;
+    players: EnemyPlayerData[];
+}
+
 export const RAIJIN_API = 'http://localhost:4000';
 export const RAIJIN_WS = 'ws://localhost:4000/ws';
+
+/** Steam CDN for item icons (88x64 originals). */
+export const ITEM_ICON_CDN = 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/items';

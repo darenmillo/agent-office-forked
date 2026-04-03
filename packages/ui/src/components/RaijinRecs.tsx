@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { HeroData, Recommendation, UIUpdate, RAIJIN_WS } from '../raijinTypes';
+import { HeroData, Recommendation, UIUpdate, EnemyIntelData, RAIJIN_WS } from '../raijinTypes';
 import { pip, scanlines, glowText, glow } from '../raijinTheme';
 import { RaijinHeroDisplay } from './RaijinHeroDisplay';
 import { RaijinStrategy } from './RaijinStrategy';
 import { RaijinActionBar } from './RaijinActionBar';
+import { RaijinTeamIntel } from './RaijinTeamIntel';
 
 const OFFICE_API = 'http://localhost:3000';
 
@@ -12,6 +13,7 @@ type ServerStatus = 'stopped' | 'starting' | 'running' | 'ready';
 
 export function RaijinRecs() {
     const [heroData, setHeroData] = useState<HeroData | null>(null);
+    const [enemyIntel, setEnemyIntel] = useState<EnemyIntelData | null>(null);
     const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
     const [connStatus, setConnStatus] = useState<ConnStatus>('disconnected');
     const [serverStatus, setServerStatus] = useState<ServerStatus>('stopped');
@@ -88,8 +90,11 @@ export function RaijinRecs() {
                             return merged.slice(0, 50);
                         });
                     }
+                } else if (update.type === 'enemy_intel') {
+                    setEnemyIntel(update.data as unknown as EnemyIntelData);
                 } else if (update.type === 'game_ended') {
                     setHeroData(null);
+                    setEnemyIntel(null);
                     setRecommendations([]);
                 } else if (update.type === 'connection') {
                     if (!(update.data as any).game_active) {
@@ -153,7 +158,7 @@ export function RaijinRecs() {
             position: 'absolute', top: 0, left: 56, right: 0, bottom: 0,
             display: 'grid',
             gridTemplateColumns: '1fr 520px',
-            gridTemplateRows: '1fr 190px',
+            gridTemplateRows: 'auto 1fr 190px',
             gap: 2,
             padding: pip.sp3,
             background: pip.bgDeep,
@@ -222,6 +227,7 @@ export function RaijinRecs() {
                 </span>
             </div>
 
+            <RaijinTeamIntel enemyIntel={enemyIntel} heroData={heroData} />
             <RaijinHeroDisplay heroData={heroData} recommendations={visibleRecs} />
             <RaijinStrategy recommendations={visibleRecs} />
             <RaijinActionBar recommendations={visibleRecs} heroData={heroData} />

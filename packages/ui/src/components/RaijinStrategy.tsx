@@ -23,11 +23,16 @@ export function RaijinStrategy({ recommendations }: Props) {
     const timers = recommendations.filter(r => r.category === 'TIMER');
     const items = recommendations.filter(r => r.category === 'ITEM');
     const fight = recommendations.filter(r => r.category === 'FIGHT');
-    // Separate patch tips + hero knowledge (GENERAL non-LLM) from Raijin Says
-    const knowledge = recommendations.filter(r =>
-        r.category === 'GENERAL' && r.tier !== 'ANALYTICAL' &&
-        (r.title.includes('7.41') || r.title.includes('How to play') || r.title.includes('When to fight') ||
-         r.title.includes('Tower') || r.title.includes('Roshan'))
+    // All non-LLM GENERAL recs: gold warnings, CS checks, buyback, ult ready, game flow, etc.
+    const coaching = recommendations.filter(r =>
+        r.category === 'GENERAL' && r.tier !== 'ANALYTICAL'
+    );
+    // Separate knowledge (patch tips, hero playstyle) from active coaching
+    const knowledge = coaching.filter(r =>
+        r.title.includes('7.41') || r.title.includes('How to play') || r.title.includes('When to fight')
+    );
+    const activeCoaching = coaching.filter(r =>
+        !r.title.includes('7.41') && !r.title.includes('How to play') && !r.title.includes('When to fight')
     );
 
     return (
@@ -63,6 +68,21 @@ export function RaijinStrategy({ recommendations }: Props) {
                     ))
                 )}
             </Section>
+
+            {/* ACTIVE COACHING — gold, CS, buyback, ult ready, game flow */}
+            {activeCoaching.length > 0 && (
+                <Section
+                    title="COACHING"
+                    count={activeCoaching.length}
+                    collapsed={collapsed['coaching']}
+                    onToggle={() => toggle('coaching')}
+                    accent={pip.amberBright}
+                >
+                    {activeCoaching.slice(0, 5).map((rec, i) => (
+                        <RecCard key={i} rec={rec} accent={pip.amberBright} />
+                    ))}
+                </Section>
+            )}
 
             {/* ITEM ADVICE — actionable */}
             <Section

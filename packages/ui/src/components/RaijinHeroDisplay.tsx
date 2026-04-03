@@ -294,30 +294,7 @@ export function RaijinHeroDisplay({ heroData, recommendations }: Props) {
                 <RecHighlight accent={pip.amber} title={skillRec.title} body={skillRec.body} />
             )}
 
-            {/* ── Enemy Heroes (if known) ── */}
-            {heroData.enemy_heroes && heroData.enemy_heroes.length > 0 && (
-                <div style={{ marginTop: pip.sp4, borderTop: `1px solid ${pip.amberFaint}`, paddingTop: pip.sp3 }}>
-                    <div style={{ ...labelStyle, marginBottom: pip.sp2, color: pip.catFight }}>
-                        ENEMIES
-                    </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: pip.sp2 }}>
-                        {heroData.enemy_heroes.map((enemy, i) => (
-                            <div key={i} style={{
-                                padding: `${pip.sp1}px ${pip.sp2}px`,
-                                background: pip.bgInset,
-                                border: `1px solid ${pip.amberGhost}`,
-                                fontSize: pip.textSm,
-                                color: pip.amberDim,
-                                fontFamily: pip.font,
-                                fontWeight: 600,
-                                textTransform: 'capitalize',
-                            }}>
-                                {enemy.replace(/_/g, ' ')}
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
+            {/* Enemy heroes moved to RaijinTeamIntel top bar */}
         </div>
     );
 }

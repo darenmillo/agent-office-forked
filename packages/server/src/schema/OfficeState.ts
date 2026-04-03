@@ -23,8 +23,32 @@ export class AgentState extends Schema {
     }
 }
 
+/**
+ * WalkState — tracks an active walk-to-handoff animation.
+ *
+ * Stored in OfficeState.walks keyed by the walking agent's ID.
+ * The Phaser client uses broadcast messages (not schema patches) to
+ * trigger the animation, but this schema preserves state for late-joining
+ * clients and debugging.
+ */
+export class WalkState extends Schema {
+    @type('string') agentId: string;
+    @type('number') targetX: number;
+    @type('number') targetY: number;
+    @type('boolean') walking: boolean;
+
+    constructor(agentId: string = '', targetX: number = 0, targetY: number = 0) {
+        super();
+        this.agentId = agentId;
+        this.targetX = targetX;
+        this.targetY = targetY;
+        this.walking = false;
+    }
+}
+
 export class OfficeState extends Schema {
     @type({ map: AgentState }) agents = new MapSchema<AgentState>();
+    @type({ map: WalkState }) walks = new MapSchema<WalkState>();
     @type('string') officeTime: string = new Date().toISOString();
     @type('number') timeScale: number = 1;
 

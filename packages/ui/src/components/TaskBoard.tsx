@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { agentName, API } from '../agentNames';
+import { pip, glowText } from '../raijinTheme';
 
 interface Task {
     id: string;
@@ -11,28 +12,28 @@ interface Task {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-    done: '#00b894',
-    in_progress: '#fdcb6e',
-    pending: '#b2bec3',
-    failed: '#d63031',
-    cancelled: '#636e72',
+    done: pip.green,
+    in_progress: pip.amber,
+    pending: pip.amberDim,
+    failed: pip.red,
+    cancelled: pip.amberFaint,
 };
 
-const STATUS_ICONS: Record<string, string> = {
-    done: '✅',
-    in_progress: '🔄',
-    pending: '⏳',
-    failed: '❌',
-    cancelled: '🚫',
+const STATUS_LABELS: Record<string, string> = {
+    done: 'DONE',
+    in_progress: 'EXEC',
+    pending: 'WAIT',
+    failed: 'FAIL',
+    cancelled: 'VOID',
 };
 
 function timeAgo(ts: number): string {
     if (!ts) return '';
     const diff = Math.floor(Date.now() / 1000 - ts);
-    if (diff < 60) return 'just now';
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-    return `${Math.floor(diff / 86400)}d ago`;
+    if (diff < 60) return 'now';
+    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+    return `${Math.floor(diff / 86400)}d`;
 }
 
 export function TaskBoard() {
@@ -56,57 +57,68 @@ export function TaskBoard() {
 
     return (
         <div style={{
-            position: 'absolute', left: 20, top: 20, width: 300,
-            background: 'rgba(10,10,30,0.88)', borderRadius: 12,
-            border: '1px solid rgba(108,92,231,0.3)',
+            position: 'absolute', left: 56, top: 20, width: 300,
+            background: 'rgba(13,13,8,0.92)',
+            border: `2px solid ${pip.amberFaint}`,
+            borderRadius: 0,
             padding: 14, zIndex: 10, pointerEvents: 'auto',
             maxHeight: '60vh', display: 'flex', flexDirection: 'column',
+            fontFamily: pip.font,
         }}>
-            <h3 style={{ margin: '0 0 10px', fontSize: 14, color: '#dfe6e9' }}>
-                📋 Task Board
+            <h3 style={{
+                margin: '0 0 10px', fontSize: 14, fontWeight: 700,
+                color: pip.amber, letterSpacing: 2,
+                textShadow: glowText(pip.amber),
+            }}>
+                TASK BOARD
             </h3>
 
             {active.length === 0 ? (
-                <p style={{ color: '#636e72', fontSize: 12, margin: 0 }}>
-                    No tasks yet. Chat with Path to get started.
+                <p style={{ color: pip.amberFaint, fontSize: 12, margin: 0 }}>
+                    No tasks. Chat with Path to get started.
                 </p>
             ) : (
                 <div style={{ overflowY: 'auto', flex: 1 }}>
                     {active.map(task => {
                         const isExpanded = expanded === task.id;
                         const hasResult = task.status === 'done' && task.result;
+                        const statusColor = STATUS_COLORS[task.status] || pip.amberFaint;
 
                         return (
                             <div key={task.id} style={{
-                                borderLeft: `3px solid ${STATUS_COLORS[task.status] || '#636e72'}`,
+                                borderLeft: `3px solid ${statusColor}`,
                                 padding: '6px 8px', marginBottom: 6,
-                                background: 'rgba(255,255,255,0.04)', borderRadius: '0 6px 6px 0',
+                                background: pip.bgInset,
                                 cursor: hasResult ? 'pointer' : 'default',
                             }}
                             onClick={() => hasResult && setExpanded(isExpanded ? null : task.id)}
                             >
-                                <div style={{ fontSize: 12, color: '#dfe6e9', fontWeight: 500, display: 'flex', justifyContent: 'space-between' }}>
-                                    <span>{STATUS_ICONS[task.status] || '❓'} {task.title}</span>
-                                    {hasResult && <span style={{ fontSize: 10, color: '#6c5ce7' }}>{isExpanded ? '▼' : '▶'}</span>}
+                                <div style={{
+                                    fontSize: 12, color: pip.amber, fontWeight: 600,
+                                    display: 'flex', justifyContent: 'space-between',
+                                }}>
+                                    <span>[{STATUS_LABELS[task.status] || '?'}] {task.title}</span>
+                                    {hasResult && <span style={{ fontSize: 10, color: pip.amberDim }}>{isExpanded ? '\u25BC' : '\u25B6'}</span>}
                                 </div>
-                                <div style={{ fontSize: 10, color: '#b2bec3', marginTop: 2 }}>
-                                    → {agentName(task.assigned_to)} · {timeAgo(task.created_at)}
+                                <div style={{ fontSize: 10, color: pip.amberDim, marginTop: 2 }}>
+                                    {'\u2192'} {agentName(task.assigned_to)} {'\u00B7'} {timeAgo(task.created_at)}
                                 </div>
 
-                                {/* Result preview */}
                                 {hasResult && !isExpanded && (
-                                    <div style={{ fontSize: 10, color: '#636e72', marginTop: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    <div style={{
+                                        fontSize: 10, color: pip.amberFaint, marginTop: 4,
+                                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                    }}>
                                         {task.result!.slice(0, 80)}...
                                     </div>
                                 )}
 
-                                {/* Expanded result */}
                                 {isExpanded && task.result && (
                                     <div style={{
-                                        fontSize: 11, color: '#dfe6e9', marginTop: 8,
-                                        padding: 8, background: 'rgba(0,0,0,0.3)', borderRadius: 4,
+                                        fontSize: 11, color: pip.amberDim, marginTop: 8,
+                                        padding: 8, background: pip.bgDeep,
                                         whiteSpace: 'pre-wrap', maxHeight: 250, overflowY: 'auto',
-                                        lineHeight: 1.4,
+                                        lineHeight: 1.4, border: `1px solid ${pip.amberGhost}`,
                                     }}>
                                         {task.result}
                                     </div>

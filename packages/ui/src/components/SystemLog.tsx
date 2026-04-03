@@ -1,18 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { agentName, API } from '../agentNames';
+import { pip, glowText } from '../raijinTheme';
 
 interface ActivityEvent {
-    type: string;  // task_done, task_failed, memory
+    type: string;
     agent: string;
     title?: string;
     content?: string;
     time: number;
 }
 
-const TYPE_ICONS: Record<string, string> = {
-    task_done: '✅',
-    task_failed: '❌',
-    memory: '🧠',
+const TYPE_LABELS: Record<string, string> = {
+    task_done: '[DONE]',
+    task_failed: '[FAIL]',
+    memory: '[MEM]',
 };
 
 function formatTime(ts: number): string {
@@ -49,11 +50,14 @@ export function SystemLog() {
                 onClick={() => setCollapsed(false)}
                 style={{
                     position: 'absolute', right: 20, top: 20, zIndex: 10, pointerEvents: 'auto',
-                    background: 'rgba(10,10,30,0.88)', border: '1px solid rgba(108,92,231,0.3)',
-                    borderRadius: 8, padding: '6px 12px', color: '#dfe6e9', fontSize: 11, cursor: 'pointer',
+                    background: 'rgba(13,13,8,0.88)',
+                    border: `1px solid ${pip.amberFaint}`,
+                    borderRadius: 0, padding: '6px 12px',
+                    color: pip.amber, fontSize: 11, cursor: 'pointer',
+                    fontFamily: pip.font, fontWeight: 700, letterSpacing: 1,
                 }}
             >
-                📊 Activity Log ({events.length})
+                ACTIVITY ({events.length})
             </button>
         );
     }
@@ -61,29 +65,39 @@ export function SystemLog() {
     return (
         <div style={{
             position: 'absolute', right: 20, top: 20, width: 280, maxHeight: 300,
-            background: 'rgba(10,10,30,0.88)', borderRadius: 12,
-            border: '1px solid rgba(108,92,231,0.3)',
+            background: 'rgba(13,13,8,0.88)',
+            border: `2px solid ${pip.amberFaint}`,
+            borderRadius: 0,
             padding: 10, zIndex: 10, pointerEvents: 'auto',
             display: 'flex', flexDirection: 'column',
+            fontFamily: pip.font,
         }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <h3 style={{ margin: 0, fontSize: 13, color: '#dfe6e9' }}>📊 Activity Log</h3>
+                <h3 style={{
+                    margin: 0, fontSize: 13, fontWeight: 700,
+                    color: pip.amber, letterSpacing: 2,
+                    textShadow: glowText(pip.amber),
+                }}>ACTIVITY LOG</h3>
                 <button onClick={() => setCollapsed(true)} style={{
-                    background: 'none', border: 'none', color: '#b2bec3', cursor: 'pointer', fontSize: 14,
-                }}>✕</button>
+                    background: 'none', border: `1px solid ${pip.amberGhost}`,
+                    color: pip.amberDim, cursor: 'pointer', fontSize: 12,
+                    fontFamily: pip.font, borderRadius: 0, padding: '1px 5px',
+                }}>X</button>
             </div>
 
             <div ref={scrollRef} style={{ overflowY: 'auto', flex: 1 }}>
                 {events.length === 0 ? (
-                    <p style={{ color: '#636e72', fontSize: 11, margin: 0 }}>No recent activity.</p>
+                    <p style={{ color: pip.amberFaint, fontSize: 11, margin: 0 }}>No recent activity.</p>
                 ) : (
                     events.map((ev, i) => (
-                        <div key={i} style={{ marginBottom: 6, fontSize: 11, color: '#b2bec3', lineHeight: 1.4 }}>
-                            <span style={{ color: '#636e72', marginRight: 4 }}>{formatTime(ev.time)}</span>
-                            {TYPE_ICONS[ev.type] || '📌'}{' '}
-                            <span style={{ color: '#6c5ce7' }}>{agentName(ev.agent)}</span>{' '}
+                        <div key={i} style={{ marginBottom: 6, fontSize: 11, color: pip.amberDim, lineHeight: 1.4 }}>
+                            <span style={{ color: pip.amberFaint, marginRight: 4 }}>{formatTime(ev.time)}</span>
+                            <span style={{ color: ev.type === 'task_failed' ? pip.red : pip.green }}>
+                                {TYPE_LABELS[ev.type] || '[EVT]'}
+                            </span>{' '}
+                            <span style={{ color: pip.amber }}>{agentName(ev.agent)}</span>{' '}
                             {ev.type === 'memory' ? (
-                                <span>learned: <em>{ev.content}</em></span>
+                                <span>learned: {ev.content}</span>
                             ) : (
                                 <span>{ev.type === 'task_done' ? 'completed' : 'failed'}: {ev.title}</span>
                             )}

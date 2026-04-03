@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import * as Colyseus from 'colyseus.js';
 import { OfficeState, AgentState } from './schema';
 import { eventBus } from '../events';
+import { ChatBubble } from './ChatBubble';
+import { IdleController } from './IdleController';
 
 let activeRoom: Colyseus.Room<OfficeState> | undefined;
 
@@ -13,11 +15,19 @@ export class OfficeScene extends Phaser.Scene {
     private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
     private room?: Colyseus.Room;
     private agentSprites: Map<string, Phaser.GameObjects.Container> = new Map();
-    private agentMeta: Map<string, { sprite: any; charKey: string; thoughtBubble: Phaser.GameObjects.Text; emoteBubble: Phaser.GameObjects.Text; lastAction: string }> = new Map();
+    private agentMeta: Map<string, { sprite: any; charKey: string; thoughtBubble: Phaser.GameObjects.Text; emoteBubble: Phaser.GameObjects.Text; lastAction: string; chatBubble: ChatBubble }> = new Map();
     private idleTweens: Map<string, Phaser.Tweens.Tween> = new Map();
     private workingTweens: Map<string, Phaser.Tweens.Tween> = new Map();
+    private chatBubbles: Map<string, ChatBubble> = new Map();
+    private walkingAgents: Set<string> = new Set();
+    private idleController!: IdleController;
     private statusText!: Phaser.GameObjects.Text;
     private followTarget: Phaser.GameObjects.Container | null = null;
+    private isMidDrag: boolean = false;
+    private midDragStartX: number = 0;
+    private midDragStartY: number = 0;
+    private midDragScrollX: number = 0;
+    private midDragScrollY: number = 0;
 
     constructor() {
         super('OfficeScene');
@@ -49,6 +59,7 @@ export class OfficeScene extends Phaser.Scene {
                     anims.create({ key: `${key}-walk-down`,  frames: anims.generateFrameNumbers(key, { start: 0, end: 2 }),   frameRate: 8, repeat: -1 });
                     anims.create({ key: `${key}-walk-up`,    frames: anims.generateFrameNumbers(key, { start: 7, end: 9 }),   frameRate: 8, repeat: -1 });
                     anims.create({ key: `${key}-walk-right`, frames: anims.generateFrameNumbers(key, { start: 14, end: 16 }), frameRate: 8, repeat: -1 });
+                    anims.create({ key: `${key}-walk-left`,  frames: anims.generateFrameNumbers(key, { start: 21, end: 23 }), frameRate: 8, repeat: -1 });
                     if (i === 0) hasAnims = true;
                 }
             }
@@ -407,12 +418,58 @@ export class OfficeScene extends Phaser.Scene {
                 cam.setZoom(newZoom);
             });
 
+            // Middle mouse button drag-to-pan
+            const canvas = this.sys.game.canvas;
+            canvas.addEventListener('mousedown', (e) => {
+                if (e.button === 1) e.preventDefault(); // suppress browser autoscroll cursor
+            });
+
+            this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+                if (pointer.middleButtonDown()) {
+                    const cam = this.cameras.main;
+                    this.isMidDrag = true;
+                    this.followTarget = null;  // FIX 1: break camera follow so drag isn't fought
+                    this.midDragStartX = pointer.x;
+                    this.midDragStartY = pointer.y;
+                    this.midDragScrollX = cam.scrollX;
+                    this.midDragScrollY = cam.scrollY;
+                    cam.stopFollow();
+                }
+            });
+
+            this.input.on('pointermove', (pointer: Phaser.Input.Pointer) => {
+                if (!this.isMidDrag) return;
+                const cam = this.cameras.main;
+                const dx = (pointer.x - this.midDragStartX) / cam.zoom;
+                const dy = (pointer.y - this.midDragStartY) / cam.zoom;
+                cam.setScroll(this.midDragScrollX - dx, this.midDragScrollY - dy);
+            });
+
+            this.input.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+                if (pointer.middleButtonReleased()) {
+                    this.isMidDrag = false;
+                }
+            });
+
+            // Safety: reset mid-drag if mouse leaves canvas or button released outside
+            this.sys.game.canvas.addEventListener('mouseleave', () => {
+                this.isMidDrag = false;
+            });
+            window.addEventListener('mouseup', () => {
+                this.isMidDrag = false;
+            });
+
             // Listen for Home button from React UI
             eventBus.addEventListener('camera-home', () => {
                 this.followTarget = null;
                 const cam = this.cameras.main;
                 cam.setZoom(1.5);
                 cam.centerOn(512, 512);
+            });
+
+            // Clean up idle controller on scene shutdown
+            this.events.on('shutdown', () => {
+                this.idleController?.destroy();
             });
 
             this.connectToServer();
@@ -450,6 +507,10 @@ export class OfficeScene extends Phaser.Scene {
                 // Agent state changes via broadcast messages (bypasses broken schema v2 patch sync)
                 this.room!.onMessage('agent-state', (data: { agentId: string; name: string; action: string; thought?: string }) => {
                     console.log(`[agent-state] ${data.name}: action="${data.action}" thought="${data.thought?.slice(0,30) || ''}"`);
+
+                    // Notify idle controller — may cancel cosmetic wander / return to desk
+                    this.idleController.onServerStateChange(data.agentId, data.action);
+
                     const container = this.agentSprites.get(data.agentId);
                     const meta = this.agentMeta.get(data.agentId);
                     if (!container || !meta) return;
@@ -492,15 +553,18 @@ export class OfficeScene extends Phaser.Scene {
                         container.setScale(1);
                         thoughtBubble.setVisible(false);
 
-                        if (sprite.type === 'Sprite') (sprite as Phaser.GameObjects.Sprite).setTint(0x00e676);
-                        emoteBubble.setText('✅');
-                        emoteBubble.setVisible(true);
-                        this.time.delayedCall(2000, () => {
-                            emoteBubble.setVisible(false);
-                            if (sprite.type === 'Sprite') (sprite as Phaser.GameObjects.Sprite).clearTint();
-                            const it = this.idleTweens.get(data.agentId);
-                            if (it) { it.resume(); }
-                        });
+                        // Guard: don't show ✅ if agent is mid-handoff walk (📦 is showing)
+                        if (!this.walkingAgents.has(data.agentId)) {
+                            if (sprite.type === 'Sprite') (sprite as Phaser.GameObjects.Sprite).setTint(0x00e676);
+                            emoteBubble.setText('✅');
+                            emoteBubble.setVisible(true);
+                            this.time.delayedCall(2000, () => {
+                                emoteBubble.setVisible(false);
+                                if (sprite.type === 'Sprite') (sprite as Phaser.GameObjects.Sprite).clearTint();
+                                const it = this.idleTweens.get(data.agentId);
+                                if (it) { it.resume(); }
+                            });
+                        }
 
                     } else if (action !== lastAction) {
                         const emoteMap: Record<string, string> = {
@@ -535,6 +599,38 @@ export class OfficeScene extends Phaser.Scene {
                     }
                 });
 
+                // Speech bubble messages — dedicated channel, separate from thoughtBubbles
+                this.room!.onMessage('speech-bubble', (data: { agentId: string; message: string; duration?: number }) => {
+                    const meta = this.agentMeta.get(data.agentId);
+                    if (!meta) return;
+                    // duration from server is in seconds; ChatBubble uses milliseconds
+                    const durationMs = (data.duration ?? 4) * 1000;
+                    meta.chatBubble.show(data.message, durationMs);
+                });
+
+                // Walk-to-handoff animation — agent walks to recipient, shows bubble, returns
+                this.room!.onMessage('agent-handoff', (data: {
+                    fromId: string; toId: string;
+                    fromX: number; fromY: number;
+                    toX: number; toY: number;
+                    label: string;
+                }) => {
+                    this.playHandoffAnimation(data);
+                });
+
+                // Initialize idle behavior controller (client-side cosmetic wander)
+                this.idleController = new IdleController(
+                    this,
+                    this.agentSprites,
+                    this.agentMeta,
+                    this.idleTweens,
+                    this.walkingAgents,
+                    this.chatBubbles,
+                );
+
+                // NOTE: In Colyseus MapSchema, onAdd's second param is the map KEY,
+                // not the Colyseus client sessionId. ExternalOfficeRoom uses agentId
+                // strings (e.g. 'agent-pm') as keys, matching data.agentId in messages.
                 state.agents.onAdd((agent: AgentState, sessionId: string) => {
                     console.log(`[Colyseus] Agent added: ${agent.name} at (${agent.x}, ${agent.y})`);
                     const container = this.add.container(agent.x * 16, agent.y * 16);
@@ -596,8 +692,15 @@ export class OfficeScene extends Phaser.Scene {
                     });
                     this.idleTweens.set(sessionId, idleTween);
 
+                    // Chat bubble — speech bubble above sprite for real-time chat messages
+                    const chatBubble = new ChatBubble(this, container);
+                    this.chatBubbles.set(sessionId, chatBubble);
+
                     // Store metadata for message-based animation handler
-                    this.agentMeta.set(sessionId, { sprite, charKey, thoughtBubble, emoteBubble, lastAction: 'idle' });
+                    this.agentMeta.set(sessionId, { sprite, charKey, thoughtBubble, emoteBubble, lastAction: 'idle', chatBubble });
+
+                    // Register for idle wander behavior (skips unknown agents like crypto-bro)
+                    this.idleController.registerAgent(sessionId);
 
                     // --- FOCUS MODE: Click to follow ---
                     container.on('pointerdown', () => {
@@ -623,6 +726,10 @@ export class OfficeScene extends Phaser.Scene {
 
                     // --- onChange: position + walk only ---
                     agent.onChange(() => {
+                        // FIX 2: skip non-movement schema updates (e.g. task/action changes)
+                        // to prevent sprite.stop() from killing the idle animation
+                        if (agent.x === prevX && agent.y === prevY) return;
+
                         // Position tween
                         this.tweens.add({
                             targets: container,
@@ -640,7 +747,7 @@ export class OfficeScene extends Phaser.Scene {
                         if (sprite.type === 'Sprite') {
                             const s = sprite as Phaser.GameObjects.Sprite;
                             if (agent.x > prevX) { s.play(`${charKey}-walk-right`, true); s.setFlipX(false); }
-                            else if (agent.x < prevX) { s.play(`${charKey}-walk-right`, true); s.setFlipX(true); }
+                            else if (agent.x < prevX) { s.play(`${charKey}-walk-left`, true); s.setFlipX(false); }
                             else if (agent.y > prevY) { s.play(`${charKey}-walk-down`, true); }
                             else if (agent.y < prevY) { s.play(`${charKey}-walk-up`, true); }
                             else { s.stop(); }
@@ -655,6 +762,13 @@ export class OfficeScene extends Phaser.Scene {
                 });
 
                 state.agents.onRemove((_agent: AgentState, sessionId: string) => {
+                    // Unregister from idle controller (cleans up wander timers/tweens)
+                    this.idleController.unregisterAgent(sessionId);
+
+                    // Destroy chatBubble BEFORE the container so its timer is cancelled
+                    this.chatBubbles.get(sessionId)?.destroy();
+                    this.chatBubbles.delete(sessionId);
+
                     const sprite = this.agentSprites.get(sessionId);
                     if (sprite) {
                         sprite.destroy();
@@ -664,6 +778,8 @@ export class OfficeScene extends Phaser.Scene {
                     this.idleTweens.delete(sessionId);
                     this.workingTweens.get(sessionId)?.destroy();
                     this.workingTweens.delete(sessionId);
+                    // Fix: agentMeta was previously leaked on remove
+                    this.agentMeta.delete(sessionId);
                 });
             });
 
@@ -673,7 +789,117 @@ export class OfficeScene extends Phaser.Scene {
         }
     }
 
+    /**
+     * Walk-to-handoff animation.
+     *
+     * The fromAgent walks to the toAgent's position, shows a 📦 speech bubble
+     * with the task label, then walks back to their starting position.
+     * Idle bob is paused during the walk. The ✅ done-emote is suppressed
+     * while this animation is active (see walkingAgents guard above).
+     */
+    private playHandoffAnimation(data: {
+        fromId: string; toId: string;
+        fromX: number; fromY: number;
+        toX: number; toY: number;
+        label: string;
+    }) {
+        const { fromId, toX, toY, label } = data;
+
+        const fromContainer = this.agentSprites.get(fromId);
+        const fromMeta = this.agentMeta.get(fromId);
+        if (!fromContainer || !fromMeta) return;
+
+        // FIX 4: notify idle controller to cancel any active wander tween before the
+        // handoff walk starts — prevents two tweens fighting over the same container
+        this.idleController.onHandoffStart(fromId);
+
+        // Mark as walking (guards ✅ emote collision)
+        this.walkingAgents.add(fromId);
+
+        // Pause idle bob
+        this.idleTweens.get(fromId)?.pause();
+
+        // Show 📦 emote
+        fromMeta.emoteBubble.setText('📦');
+        fromMeta.emoteBubble.setVisible(true);
+
+        // Pixel targets (tile × 16)
+        const targetPxX = toX * 16;
+        const targetPxY = toY * 16;
+        const startPxX = fromContainer.x;
+        const startPxY = fromContainer.y;
+
+        // Duration based on distance (~64px/sec ≈ 4 tiles/sec)
+        const dist = Math.sqrt((targetPxX - startPxX) ** 2 + (targetPxY - startPxY) ** 2);
+        const walkDuration = Math.max(800, Math.min(4000, (dist / 64) * 1000));
+
+        // Pick walk animation direction (dominant axis)
+        const dx = targetPxX - startPxX;
+        const dy = targetPxY - startPxY;
+        const { sprite, charKey } = fromMeta;
+
+        const playWalkAnim = (goingForward: boolean) => {
+            if (sprite.type !== 'Sprite') return;
+            const s = sprite as Phaser.GameObjects.Sprite;
+            const ddx = goingForward ? dx : -dx;
+            const ddy = goingForward ? dy : -dy;
+            if (Math.abs(ddx) > Math.abs(ddy)) {
+                s.play(ddx > 0 ? `${charKey}-walk-right` : `${charKey}-walk-left`, true);
+            } else {
+                s.play(ddy > 0 ? `${charKey}-walk-down` : `${charKey}-walk-up`, true);
+            }
+            s.setFlipX(false);
+        };
+
+        // --- Phase 1: Walk to target agent ---
+        playWalkAnim(true);
+        this.tweens.add({
+            targets: fromContainer,
+            x: targetPxX,
+            y: targetPxY,
+            duration: walkDuration,
+            ease: 'Sine.easeInOut',
+            onComplete: () => {
+                // Stop walk animation
+                if (sprite.type === 'Sprite') (sprite as Phaser.GameObjects.Sprite).stop();
+
+                // Hide 📦 emote, show speech bubble with label
+                fromMeta.emoteBubble.setVisible(false);
+                fromMeta.chatBubble.show(`📦 ${label}`, 3000);
+
+                // --- Phase 2: After bubble, walk back to starting position ---
+                this.time.delayedCall(3200, () => {
+                    playWalkAnim(false);
+                    this.tweens.add({
+                        targets: fromContainer,
+                        x: startPxX,
+                        y: startPxY,
+                        duration: walkDuration,
+                        ease: 'Sine.easeInOut',
+                        onComplete: () => {
+                            // Stop walk animation
+                            if (sprite.type === 'Sprite') (sprite as Phaser.GameObjects.Sprite).stop();
+
+                            // Resume idle state
+                            this.walkingAgents.delete(fromId);
+                            this.idleTweens.get(fromId)?.resume();
+
+                            // Notify idle controller — start handoff linger period
+                            this.idleController.onHandoffComplete(fromId);
+                        }
+                    });
+                });
+            }
+        });
+    }
+
     update() {
+        // Clamp all visible chat bubbles to screen edges every frame
+        this.chatBubbles.forEach(cb => cb.clamp());
+
+        // Idle behavior — proximity checks for socializing
+        if (this.idleController) this.idleController.tick(this.time.now);
+
         // Escape key breaks follow mode
         if (this.input.keyboard && Phaser.Input.Keyboard.JustDown(this.input.keyboard.addKey('ESC'))) {
             this.followTarget = null;
