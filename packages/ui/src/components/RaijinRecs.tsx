@@ -16,6 +16,8 @@ import { RaijinActionBar } from './RaijinActionBar';
 import { RaijinTeamIntel } from './RaijinTeamIntel';
 import { RaijinEnemyPicker } from './RaijinEnemyPicker';
 import { RaijinDeathPanel } from './RaijinDeathPanel';
+import { RaijinSettings } from './RaijinSettings';
+import type { RecUrgency } from '../raijinTypes';
 
 const OFFICE_API = 'http://localhost:3000';
 
@@ -35,6 +37,10 @@ export function RaijinRecs() {
     // Phase 3: TTS settings (wired through to RaijinActionBar mute button)
     const [ttsEnabled, setTtsEnabled] = useState(false);
     const [ttsMuted, setTtsMuted] = useState(false);
+    const [ttsMinUrgency, setTtsMinUrgency] = useState<RecUrgency>('CRITICAL');
+    const [settingsOpen, setSettingsOpen] = useState(false);
+    // Web Audio playback context for TTS chunks — lazy-init on first use
+    const audioCtxRef = useRef<AudioContext | null>(null);
     const wsRef = useRef<WebSocket | null>(null);
     const retryRef = useRef<number>(1000);
 
@@ -148,10 +154,20 @@ export function RaijinRecs() {
                     setEnemySource('none');
                     pickerAutoOpenedRef.current = false;
                 } else if (update.type === 'settings_update') {
-                    // Phase 3 wires real settings broadcasting here.
-                    const d = update.data as { enabled?: boolean; muted?: boolean };
+                    const d = update.data as {
+                        enabled?: boolean;
+                        muted?: boolean;
+                        min_urgency?: RecUrgency;
+                    };
                     if (typeof d.enabled === 'boolean') setTtsEnabled(d.enabled);
                     if (typeof d.muted === 'boolean') setTtsMuted(d.muted);
+                    if (d.min_urgency) setTtsMinUrgency(d.min_urgency);
+                } else if (update.type === 'tts_audio') {
+                    // Decode base64-encoded MP3 chunks and play via Web Audio API
+                    const d = update.data as { chunks?: string[] };
+                    if (d.chunks && d.chunks.length > 0) {
+                        void playTTSChunks(d.chunks, audioCtxRef);
+                    }
                 } else if (update.type === 'connection') {
                     if (!(update.data as any).game_active) {
                         setHeroData(null);
@@ -237,12 +253,30 @@ export function RaijinRecs() {
                 zIndex: 11,
             }} />
 
-            {/* Server controls + Connection status */}
+            {/* Server controls + Connection status + Settings gear */}
             <div style={{
                 position: 'absolute', top: pip.sp3, right: pip.sp4, zIndex: 20,
                 fontFamily: pip.font,
                 display: 'flex', alignItems: 'center', gap: pip.sp3,
             }}>
+                <button
+                    onClick={() => setSettingsOpen(true)}
+                    aria-label="Open Raijin settings"
+                    title="Settings"
+                    style={{
+                        background: 'transparent',
+                        border: `1px solid ${pip.amberFaint}`,
+                        color: pip.amber,
+                        padding: '4px 10px',
+                        fontFamily: pip.font,
+                        fontSize: pip.textSm,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        minHeight: 32,
+                    }}
+                >
+                    {'\u2699'} SETTINGS
+                </button>
                 <button
                     onClick={toggleServer}
                     style={{
@@ -323,6 +357,66 @@ export function RaijinRecs() {
                     setEnemySource('manual');
                 }}
             />
+
+            {/* Settings modal — gear-opened */}
+            <RaijinSettings
+                open={settingsOpen}
+                onClose={() => setSettingsOpen(false)}
+                enabled={ttsEnabled}
+                muted={ttsMuted}
+                minUrgency={ttsMinUrgency}
+                onApply={async partial => {
+                    try {
+                        await fetch(`${RAIJIN_API}/api/settings/tts`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(partial),
+                        });
+                        // Optimistic local update — backend broadcast will confirm
+                        if (typeof partial.enabled === 'boolean') setTtsEnabled(partial.enabled);
+                        if (typeof partial.muted === 'boolean') setTtsMuted(partial.muted);
+                        if (partial.min_urgency) setTtsMinUrgency(partial.min_urgency);
+                    } catch {
+                        /* offline — ignore */
+                    }
+                }}
+            />
         </div>
     );
+}
+
+/** Decode + play base64-encoded MP3 chunks via Web Audio API. */
+async function playTTSChunks(
+    chunksB64: string[],
+    ctxRef: React.MutableRefObject<AudioContext | null>,
+): Promise<void> {
+    try {
+        // Stitch chunks into a single Uint8Array
+        const totalLen = chunksB64.reduce((sum, c) => sum + atob(c).length, 0);
+        const merged = new Uint8Array(totalLen);
+        let offset = 0;
+        for (const c of chunksB64) {
+            const bin = atob(c);
+            for (let i = 0; i < bin.length; i++) {
+                merged[offset + i] = bin.charCodeAt(i);
+            }
+            offset += bin.length;
+        }
+
+        // Lazy-init a shared AudioContext
+        if (!ctxRef.current) {
+            const Ctx = (window as any).AudioContext || (window as any).webkitAudioContext;
+            if (!Ctx) return;
+            ctxRef.current = new Ctx();
+        }
+        const ctx = ctxRef.current;
+        if (!ctx) return;
+        const buffer = await ctx.decodeAudioData(merged.buffer);
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        source.start();
+    } catch {
+        // Silent — TTS failure shouldn't crash the UI
+    }
 }
