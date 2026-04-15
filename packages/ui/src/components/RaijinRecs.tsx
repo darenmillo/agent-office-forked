@@ -15,6 +15,7 @@ import { RaijinStrategy } from './RaijinStrategy';
 import { RaijinActionBar } from './RaijinActionBar';
 import { RaijinTeamIntel } from './RaijinTeamIntel';
 import { RaijinEnemyPicker } from './RaijinEnemyPicker';
+import { RaijinDeathPanel } from './RaijinDeathPanel';
 
 const OFFICE_API = 'http://localhost:3000';
 
@@ -309,6 +310,9 @@ export function RaijinRecs() {
                     }
                 }}
             />
+
+            {/* Death-timer coaching panel — conditional on alive=false */}
+            <RaijinDeathPanel heroData={heroData} recommendations={visibleRecs} />
 
             {/* Enemy picker modal — manually or auto-triggered */}
             <RaijinEnemyPicker
