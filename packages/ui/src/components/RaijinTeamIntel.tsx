@@ -1,10 +1,12 @@
 import React from 'react';
-import { HeroData, EnemyIntelData, EnemyPlayerData, ITEM_ICON_CDN } from '../raijinTypes';
+import { HeroData, EnemyIntelData, EnemyPlayerData, EnemySource, ITEM_ICON_CDN } from '../raijinTypes';
 import { pip, panelBase, labelStyle, glowText, glow } from '../raijinTheme';
 
 interface Props {
     enemyIntel: EnemyIntelData | null;
     heroData: HeroData | null;
+    enemySource?: EnemySource;
+    onSourceClick?: () => void;
 }
 
 const PORTRAIT_API = 'http://localhost:4000/api/portrait';
@@ -20,7 +22,12 @@ const HERO_ICON_CDN = 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/
  * - Contrast: all text meets 4.5:1 on dark backgrounds
  * - Spacing: 4px grid (pip.sp1 increments)
  */
-export function RaijinTeamIntel({ enemyIntel, heroData }: Props) {
+export function RaijinTeamIntel({
+    enemyIntel,
+    heroData,
+    enemySource = 'none',
+    onSourceClick,
+}: Props) {
     if (!heroData) return null;
 
     const myTeam = heroData.my_team || '';
@@ -48,7 +55,11 @@ export function RaijinTeamIntel({ enemyIntel, heroData }: Props) {
             alignItems: 'center',
             gap: pip.sp2,
             minHeight: 90,
+            position: 'relative',
         }}>
+            {/* Enemy-source badge — tells the player where enemy data comes from */}
+            <EnemySourceBadge source={enemySource} onClick={onSourceClick} />
+
             {/* ── ALLIES (left) ── */}
             <div style={{
                 flex: 1,
@@ -425,5 +436,49 @@ function DelayBadge({ delay, hasData }: { delay: number; hasData: boolean }) {
         }}>
             INTEL ~{minutes > 0 ? `${minutes}m` : `${delay}s`} AGO
         </span>
+    );
+}
+
+/* ── Enemy source badge — pinned top-left of the team intel bar ── */
+function EnemySourceBadge({
+    source,
+    onClick,
+}: {
+    source: EnemySource;
+    onClick?: () => void;
+}) {
+    const config: Record<EnemySource, { label: string; color: string; clickable: boolean }> = {
+        gsi_draft: { label: 'ENEMIES: GSI DRAFT \u2713', color: pip.amberBright, clickable: false },
+        bot: { label: 'ENEMIES: BOT \u2713', color: pip.green, clickable: false },
+        manual: { label: 'ENEMIES: MANUAL', color: pip.amber, clickable: true },
+        none: { label: 'ENEMIES: UNKNOWN \u2014 click to set', color: pip.red, clickable: true },
+    };
+    const cfg = config[source];
+    const interactive = cfg.clickable && !!onClick;
+    return (
+        <button
+            type="button"
+            onClick={interactive ? onClick : undefined}
+            disabled={!interactive}
+            aria-label={cfg.label}
+            style={{
+                position: 'absolute',
+                top: 4,
+                left: 8,
+                zIndex: 5,
+                background: 'transparent',
+                border: `1px solid ${cfg.color}`,
+                color: cfg.color,
+                padding: '3px 8px',
+                fontFamily: pip.font,
+                fontSize: pip.textXs,
+                fontWeight: 700,
+                letterSpacing: 1,
+                cursor: interactive ? 'pointer' : 'default',
+                textShadow: glowText(cfg.color, 4),
+            }}
+        >
+            {cfg.label}
+        </button>
     );
 }

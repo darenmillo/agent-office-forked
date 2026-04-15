@@ -1,10 +1,20 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { HeroData, Recommendation, UIUpdate, EnemyIntelData, RAIJIN_WS } from '../raijinTypes';
+import {
+    HeroData,
+    Recommendation,
+    UIUpdate,
+    EnemyIntelData,
+    BotStatus,
+    EnemySource,
+    RAIJIN_API,
+    RAIJIN_WS,
+} from '../raijinTypes';
 import { pip, scanlines, glowText, glow } from '../raijinTheme';
 import { RaijinHeroDisplay } from './RaijinHeroDisplay';
 import { RaijinStrategy } from './RaijinStrategy';
 import { RaijinActionBar } from './RaijinActionBar';
 import { RaijinTeamIntel } from './RaijinTeamIntel';
+import { RaijinEnemyPicker } from './RaijinEnemyPicker';
 
 const OFFICE_API = 'http://localhost:3000';
 
@@ -17,6 +27,13 @@ export function RaijinRecs() {
     const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
     const [connStatus, setConnStatus] = useState<ConnStatus>('disconnected');
     const [serverStatus, setServerStatus] = useState<ServerStatus>('stopped');
+    // Enemy source tracking (GSI draft / bot / manual / none) — drives auto-picker open
+    const [enemySource, setEnemySource] = useState<EnemySource>('none');
+    const [pickerOpen, setPickerOpen] = useState(false);
+    const pickerAutoOpenedRef = useRef<boolean>(false);
+    // Phase 3: TTS settings (wired through to RaijinActionBar mute button)
+    const [ttsEnabled, setTtsEnabled] = useState(false);
+    const [ttsMuted, setTtsMuted] = useState(false);
     const wsRef = useRef<WebSocket | null>(null);
     const retryRef = useRef<number>(1000);
 
@@ -38,6 +55,37 @@ export function RaijinRecs() {
         const id = setInterval(checkServer, 3000);
         return () => clearInterval(id);
     }, [checkServer]);
+
+    // Poll /api/bot-status to track enemy source for the badge + auto-picker
+    const checkBotStatus = useCallback(async () => {
+        if (serverStatus !== 'ready') return;
+        try {
+            const resp = await fetch(`${RAIJIN_API}/api/bot-status`);
+            if (!resp.ok) return;
+            const data: BotStatus = await resp.json();
+            setEnemySource(data.enemy_source ?? 'none');
+        } catch {
+            // backend not reachable; leave state as-is
+        }
+    }, [serverStatus]);
+
+    useEffect(() => {
+        if (serverStatus !== 'ready') return;
+        checkBotStatus();
+        const id = setInterval(checkBotStatus, 4000);
+        return () => clearInterval(id);
+    }, [serverStatus, checkBotStatus]);
+
+    // Auto-open the enemy picker when a hero is live but enemies are unknown.
+    // Fires ONCE per game — tracked via pickerAutoOpenedRef which resets on game_ended.
+    useEffect(() => {
+        if (!heroData) return;
+        if (heroData.game_phase !== 'DOTA_GAMERULES_STATE_GAME_IN_PROGRESS') return;
+        if (enemySource === 'none' && !pickerAutoOpenedRef.current) {
+            pickerAutoOpenedRef.current = true;
+            setPickerOpen(true);
+        }
+    }, [heroData, enemySource]);
 
     const toggleServer = useCallback(async () => {
         if (serverStatus === 'ready' || serverStatus === 'starting') {
@@ -96,6 +144,13 @@ export function RaijinRecs() {
                     setHeroData(null);
                     setEnemyIntel(null);
                     setRecommendations([]);
+                    setEnemySource('none');
+                    pickerAutoOpenedRef.current = false;
+                } else if (update.type === 'settings_update') {
+                    // Phase 3 wires real settings broadcasting here.
+                    const d = update.data as { enabled?: boolean; muted?: boolean };
+                    if (typeof d.enabled === 'boolean') setTtsEnabled(d.enabled);
+                    if (typeof d.muted === 'boolean') setTtsMuted(d.muted);
                 } else if (update.type === 'connection') {
                     if (!(update.data as any).game_active) {
                         setHeroData(null);
@@ -227,10 +282,43 @@ export function RaijinRecs() {
                 </span>
             </div>
 
-            <RaijinTeamIntel enemyIntel={enemyIntel} heroData={heroData} />
+            <RaijinTeamIntel
+                enemyIntel={enemyIntel}
+                heroData={heroData}
+                enemySource={enemySource}
+                onSourceClick={() => setPickerOpen(true)}
+            />
             <RaijinHeroDisplay heroData={heroData} recommendations={visibleRecs} />
             <RaijinStrategy recommendations={visibleRecs} />
-            <RaijinActionBar recommendations={visibleRecs} heroData={heroData} />
+            <RaijinActionBar
+                recommendations={visibleRecs}
+                heroData={heroData}
+                ttsEnabled={ttsEnabled}
+                ttsMuted={ttsMuted}
+                onToggleMute={async () => {
+                    const next = !ttsMuted;
+                    setTtsMuted(next);
+                    try {
+                        await fetch(`${RAIJIN_API}/api/settings/tts`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ muted: next }),
+                        });
+                    } catch {
+                        /* offline — state is optimistic */
+                    }
+                }}
+            />
+
+            {/* Enemy picker modal — manually or auto-triggered */}
+            <RaijinEnemyPicker
+                open={pickerOpen}
+                onClose={() => setPickerOpen(false)}
+                onConfirm={() => {
+                    // After manual set, we know the source is 'manual' — skip polling wait
+                    setEnemySource('manual');
+                }}
+            />
         </div>
     );
 }

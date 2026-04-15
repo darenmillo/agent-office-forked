@@ -1,13 +1,22 @@
 import React from 'react';
-import { Recommendation, HeroData } from '../raijinTypes';
+import { Recommendation, HeroData, effectiveUrgency } from '../raijinTypes';
 import { pip, panelBase, labelStyle, glow, glowText } from '../raijinTheme';
 
 interface Props {
     recommendations: Recommendation[];
     heroData: HeroData | null;
+    ttsEnabled?: boolean;
+    ttsMuted?: boolean;
+    onToggleMute?: () => void;
 }
 
-export function RaijinActionBar({ recommendations, heroData }: Props) {
+export function RaijinActionBar({
+    recommendations,
+    heroData,
+    ttsEnabled = false,
+    ttsMuted = false,
+    onToggleMute,
+}: Props) {
     const ACTION_BAR_MAX_AGE_MS = 120_000;
     const now = Date.now();
     const freshRecs = recommendations.filter(r =>
@@ -17,19 +26,23 @@ export function RaijinActionBar({ recommendations, heroData }: Props) {
         ? freshRecs.reduce((a, b) => b.priority > a.priority ? b : a)
         : null;
 
-    const isUrgent = topRec && topRec.priority >= 4;
+    const topUrgency = topRec ? effectiveUrgency(topRec) : 'ROUTINE';
+    const isCritical = topUrgency === 'CRITICAL';
+    const isImportant = topUrgency === 'IMPORTANT';
     const isDead = heroData && !heroData.alive;
 
-    const urgentBorder = isUrgent ? pip.red : pip.amberFaint;
+    const urgentBorder = isCritical ? pip.red : isImportant ? pip.amber : pip.amberFaint;
 
     return (
-        <div style={{
-            ...panelBase,
-            gridColumn: '1 / -1',
-            borderColor: urgentBorder,
-            animation: isUrgent ? 'raijin-pulse 1.5s ease-in-out infinite' : undefined,
-            boxShadow: isUrgent ? glow(pip.red, 16) : undefined,
-        }}>
+        <div
+            className={isCritical ? 'raijin-actionbar-critical' : ''}
+            style={{
+                ...panelBase,
+                gridColumn: '1 / -1',
+                borderColor: urgentBorder,
+                boxShadow: isCritical ? glow(pip.red, 16) : isImportant ? glow(pip.amber, 6) : undefined,
+            }}
+        >
             <style>{`
                 @keyframes raijin-pulse {
                     0%, 100% {
@@ -41,6 +54,14 @@ export function RaijinActionBar({ recommendations, heroData }: Props) {
                         box-shadow: ${glow(pip.red, 24)};
                     }
                 }
+                .raijin-actionbar-critical {
+                    animation: raijin-pulse 1.5s ease-in-out infinite;
+                }
+                @media (prefers-reduced-motion: reduce) {
+                    .raijin-actionbar-critical {
+                        animation: none;
+                    }
+                }
             `}</style>
 
             <div style={{ display: 'flex', gap: pip.sp5, alignItems: 'flex-start' }}>
@@ -48,12 +69,32 @@ export function RaijinActionBar({ recommendations, heroData }: Props) {
                 <div style={{ flex: 2 }}>
                     <div style={{
                         ...labelStyle,
-                        color: isUrgent ? pip.red : pip.amber,
+                        color: isCritical ? pip.red : pip.amber,
                         fontSize: pip.textSm,
                         marginBottom: pip.sp2,
-                        textShadow: isUrgent ? glowText(pip.red, 6) : glowText(pip.amber),
+                        textShadow: isCritical ? glowText(pip.red, 6) : glowText(pip.amber),
+                        display: 'flex', alignItems: 'center', gap: pip.sp2,
                     }}>
-                        {'\u25B8'} PRIORITY ACTION
+                        <span>{'\u25B8'} PRIORITY ACTION</span>
+                        {ttsEnabled && onToggleMute && (
+                            <button
+                                onClick={onToggleMute}
+                                aria-label={ttsMuted ? 'Unmute voice coaching' : 'Mute voice coaching'}
+                                style={{
+                                    background: ttsMuted ? pip.bgInset : 'transparent',
+                                    border: `1px solid ${ttsMuted ? pip.red : pip.amberFaint}`,
+                                    color: ttsMuted ? pip.red : pip.amber,
+                                    padding: '2px 8px',
+                                    fontFamily: pip.font,
+                                    fontSize: pip.textXs,
+                                    letterSpacing: 1,
+                                    cursor: 'pointer',
+                                    textShadow: ttsMuted ? glowText(pip.red, 4) : undefined,
+                                }}
+                            >
+                                {ttsMuted ? 'MUTED' : 'TTS ON'}
+                            </button>
+                        )}
                     </div>
 
                     {isDead ? (
@@ -75,17 +116,18 @@ export function RaijinActionBar({ recommendations, heroData }: Props) {
                     ) : topRec ? (
                         <div>
                             <div style={{
-                                fontSize: isUrgent ? pip.textXl : pip.textLg,
+                                fontSize: isCritical ? pip.textXl : pip.textLg,
                                 fontWeight: 700,
-                                color: isUrgent ? pip.red : pip.amber,
+                                color: isCritical ? pip.red : pip.amber,
                                 fontFamily: pip.font,
                                 lineHeight: 1.2,
-                                textShadow: isUrgent ? glowText(pip.red, 6) : glowText(pip.amber),
+                                textShadow: isCritical ? glowText(pip.red, 6) : glowText(pip.amber),
                             }}>
                                 {topRec.title}
                             </div>
                             <div style={{
-                                fontSize: pip.textBase, color: pip.amberDim,
+                                // Use amber (not amberDim) for body text — WCAG AA pass
+                                fontSize: pip.textBase, color: pip.amber,
                                 fontFamily: pip.font, marginTop: pip.sp1,
                                 lineHeight: 1.5,
                             }}>

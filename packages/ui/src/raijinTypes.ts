@@ -31,6 +31,8 @@ export interface HeroData {
     my_team: string;
 }
 
+export type RecUrgency = 'CRITICAL' | 'IMPORTANT' | 'ROUTINE';
+
 export interface Recommendation {
     category: 'ITEM' | 'SKILL' | 'TIMER' | 'FIGHT' | 'GENERAL';
     priority: number;
@@ -41,10 +43,51 @@ export interface Recommendation {
     timestamp: number;
     /** Epoch ms when the frontend received this rec (for age-based filtering). */
     receivedAt: number;
+    /** Optional urgency tier — falls back to priority-derived when missing. */
+    urgency?: RecUrgency;
+    /** Optional short personality-flavored TTS variant. */
+    tts_text?: string;
+    /** Optional tag list — used by the UI for tag-based filtering (e.g. 'knowledge', 'phase'). */
+    tags?: string[];
+}
+
+/**
+ * Resolve the effective urgency from a rec, deriving from priority when the
+ * explicit field is absent. Mirrors the backend's `urgency_from_priority`.
+ */
+export function effectiveUrgency(rec: Recommendation): RecUrgency {
+    if (rec.urgency) return rec.urgency;
+    if (rec.priority >= 5) return 'CRITICAL';
+    if (rec.priority >= 3) return 'IMPORTANT';
+    return 'ROUTINE';
+}
+
+export type EnemySource = 'gsi_draft' | 'bot' | 'manual' | 'none';
+
+export interface BotStatus {
+    status: string;
+    configured: boolean;
+    enemy_source: EnemySource;
+    has_realtime_data: boolean;
+}
+
+export interface HeroListEntry {
+    id: number;
+    name: string;
+    display: string;
 }
 
 export interface UIUpdate {
-    type: 'hero_status' | 'recommendations' | 'game_plan' | 'action_bar' | 'connection' | 'game_ended' | 'enemy_intel';
+    type:
+        | 'hero_status'
+        | 'recommendations'
+        | 'game_plan'
+        | 'action_bar'
+        | 'connection'
+        | 'game_ended'
+        | 'enemy_intel'
+        | 'tts_audio'
+        | 'settings_update';
     data: Record<string, unknown>;
     timestamp: number;
 }
@@ -81,3 +124,6 @@ export const RAIJIN_WS = 'ws://localhost:4000/ws';
 
 /** Steam CDN for item icons (88x64 originals). */
 export const ITEM_ICON_CDN = 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/items';
+
+/** Steam CDN for hero portraits (used by RaijinEnemyPicker's hero grid). */
+export const HERO_ICON_CDN = 'https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes';

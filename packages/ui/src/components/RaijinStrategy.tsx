@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Recommendation } from '../raijinTypes';
+import { Recommendation, effectiveUrgency } from '../raijinTypes';
 import { pip, panelBase, labelStyle, glowText } from '../raijinTheme';
 
 interface Props {
@@ -19,21 +19,27 @@ export function RaijinStrategy({ recommendations }: Props) {
     const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
     const toggle = (key: string) => setCollapsed(prev => ({ ...prev, [key]: !prev[key] }));
 
+    // Tag-based knowledge detection — replaces the fragile title.includes('7.41')
+    // filter. Backend attaches tags=['knowledge'] / 'patch' / 'phase' to one-time
+    // informational recs; those are surfaced in the GAME INTEL section.
+    const isKnowledge = (r: Recommendation) => !!r.tags?.some(
+        t => t === 'knowledge' || t === 'patch' || t === 'phase'
+    );
+
     const general = recommendations.filter(r => r.tier === 'ANALYTICAL');
     const timers = recommendations.filter(r => r.category === 'TIMER');
     const items = recommendations.filter(r => r.category === 'ITEM');
-    const fight = recommendations.filter(r => r.category === 'FIGHT');
+    const fight = recommendations.filter(r => r.category === 'FIGHT' && !isKnowledge(r));
     // All non-LLM GENERAL recs: gold warnings, CS checks, buyback, ult ready, game flow, etc.
     const coaching = recommendations.filter(r =>
         r.category === 'GENERAL' && r.tier !== 'ANALYTICAL'
     );
-    // Separate knowledge (patch tips, hero playstyle) from active coaching
-    const knowledge = coaching.filter(r =>
-        r.title.includes('7.41') || r.title.includes('How to play') || r.title.includes('When to fight')
-    );
-    const activeCoaching = coaching.filter(r =>
-        !r.title.includes('7.41') && !r.title.includes('How to play') && !r.title.includes('When to fight')
-    );
+    // Tag-based knowledge split — back-compat for old recs that set neither urgency nor tags
+    const knowledge = [
+        ...coaching.filter(isKnowledge),
+        ...recommendations.filter(r => r.category === 'FIGHT' && isKnowledge(r)),
+    ];
+    const activeCoaching = coaching.filter(r => !isKnowledge(r));
 
     return (
         <div style={{ ...panelBase, overflowY: 'auto' }}>
@@ -200,29 +206,48 @@ function Section({ title, count, collapsed, onToggle, accent, children }: {
 
 /* ── Recommendation Card ── */
 function RecCard({ rec, accent }: { rec: Recommendation; accent: string }) {
-    const isUrgent = rec.priority >= 4;
+    const urgency = effectiveUrgency(rec);
+    const isCritical = urgency === 'CRITICAL';
+    const isImportant = urgency === 'IMPORTANT';
+    const borderColor = isCritical ? pip.red : accent;
+    // WCAG AA: amberDim body text fails contrast; use amber for CRITICAL/IMPORTANT body.
+    const bodyColor = isCritical || isImportant ? pip.amber : pip.amberDim;
+    const titleColor = isCritical ? pip.red : isImportant ? pip.amber : pip.amberDim;
     return (
-        <div style={{
-            borderLeft: `3px solid ${accent}`,
-            padding: `${pip.sp2}px ${pip.sp3}px`,
-            marginBottom: pip.sp2,
-            background: isUrgent ? pip.bgHover : pip.bgInset,
-        }}>
+        <div
+            className={`raijin-rec-card${isCritical ? ' raijin-rec-card-critical' : ''}`}
+            style={{
+                borderLeft: `3px solid ${borderColor}`,
+                padding: `${pip.sp2}px ${pip.sp3}px`,
+                marginBottom: pip.sp2,
+                background: isCritical || isImportant ? pip.bgHover : pip.bgInset,
+            }}
+        >
+            <style>{`
+                .raijin-rec-card {
+                    transition: opacity 300ms ease-out;
+                }
+                @media (prefers-reduced-motion: reduce) {
+                    .raijin-rec-card {
+                        transition: none;
+                    }
+                }
+            `}</style>
             <div style={{
                 fontSize: pip.textBase,
                 fontWeight: 700,
-                color: isUrgent ? pip.amber : pip.amberDim,
+                color: titleColor,
                 fontFamily: pip.font,
+                textShadow: isCritical ? glowText(pip.red, 4) : undefined,
             }}>
                 {rec.title}
             </div>
             <div style={{
                 fontSize: pip.textBase,
-                color: pip.amberDim,
+                color: bodyColor,
                 fontFamily: pip.font,
                 marginTop: pip.sp1,
                 lineHeight: 1.5,
-                opacity: 0.85,
             }}>
                 {rec.body}
             </div>
