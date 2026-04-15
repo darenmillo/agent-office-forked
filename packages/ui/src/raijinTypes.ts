@@ -119,6 +119,32 @@ export interface EnemyIntelData {
     players: EnemyPlayerData[];
 }
 
+export interface DimensionGrade {
+    dimension: 'farming' | 'fighting' | 'objectives' | 'map_awareness' | 'itemization';
+    grade: 'S' | 'A' | 'B' | 'C' | 'D' | 'F';
+    score: number;
+    callout: string;
+}
+
+export interface PostGameReport {
+    match_id: string;
+    hero: string;
+    result: 'WIN' | 'LOSS' | 'UNKNOWN';
+    duration: number;
+    grades: DimensionGrade[];
+    narrative: string;
+    key_moments: Array<{ type: string; clock_time: number; wall_time: string; data: Record<string, unknown> }>;
+}
+
+export interface PostGameHistoryEntry {
+    match_id: string;
+    hero: string;
+    result: string;
+    duration: number;
+    grades: Array<{ dimension: string; grade: string; score: number }>;
+    narrative_excerpt: string;
+}
+
 export const RAIJIN_API = 'http://localhost:4000';
 export const RAIJIN_WS = 'ws://localhost:4000/ws';
 

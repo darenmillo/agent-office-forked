@@ -17,7 +17,9 @@ import { RaijinTeamIntel } from './RaijinTeamIntel';
 import { RaijinEnemyPicker } from './RaijinEnemyPicker';
 import { RaijinDeathPanel } from './RaijinDeathPanel';
 import { RaijinSettings } from './RaijinSettings';
-import type { RecUrgency } from '../raijinTypes';
+import { RaijinPostGame } from './RaijinPostGame';
+import { RaijinHistory } from './RaijinHistory';
+import type { PostGameReport, RecUrgency } from '../raijinTypes';
 
 const OFFICE_API = 'http://localhost:3000';
 
@@ -39,6 +41,9 @@ export function RaijinRecs() {
     const [ttsMuted, setTtsMuted] = useState(false);
     const [ttsMinUrgency, setTtsMinUrgency] = useState<RecUrgency>('CRITICAL');
     const [settingsOpen, setSettingsOpen] = useState(false);
+    // Phase 4: post-game report state
+    const [postGameReport, setPostGameReport] = useState<PostGameReport | null>(null);
+    const [historyOpen, setHistoryOpen] = useState(false);
     // Web Audio playback context for TTS chunks — lazy-init on first use
     const audioCtxRef = useRef<AudioContext | null>(null);
     const wsRef = useRef<WebSocket | null>(null);
@@ -153,6 +158,11 @@ export function RaijinRecs() {
                     setRecommendations([]);
                     setEnemySource('none');
                     pickerAutoOpenedRef.current = false;
+                    // Phase 4: fetch the latest post-game report and surface it
+                    fetch(`${RAIJIN_API}/api/post-game/latest`)
+                        .then(r => (r.ok ? r.json() : null))
+                        .then(data => { if (data) setPostGameReport(data); })
+                        .catch(() => { /* no report available */ });
                 } else if (update.type === 'settings_update') {
                     const d = update.data as {
                         enabled?: boolean;
@@ -356,6 +366,20 @@ export function RaijinRecs() {
                     // After manual set, we know the source is 'manual' — skip polling wait
                     setEnemySource('manual');
                 }}
+            />
+
+            {/* Post-game report — mounts when a game_ended message surfaces a report */}
+            <RaijinPostGame
+                report={postGameReport}
+                onDismiss={() => setPostGameReport(null)}
+                onViewHistory={() => setHistoryOpen(true)}
+            />
+
+            {/* History modal — opened from the post-game VIEW HISTORY button */}
+            <RaijinHistory
+                open={historyOpen}
+                onClose={() => setHistoryOpen(false)}
+                onSelectMatch={report => setPostGameReport(report)}
             />
 
             {/* Settings modal — gear-opened */}
