@@ -209,6 +209,52 @@ export function RaijinRecs() {
         return () => { wsRef.current?.close(); };
     }, [connect]);
 
+    // Phase 5b.3: Alt+M (mute), Alt+S (settings), Alt+H (history).
+    // Skipped when focus is in any input/textarea/contenteditable so the user
+    // can still type the letters in the enemy-picker search field.
+    const toggleMute = useCallback(async () => {
+        const next = !ttsMuted;
+        setTtsMuted(next);
+        try {
+            await fetch(`${RAIJIN_API}/api/settings/tts`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ muted: next }),
+            });
+        } catch {
+            /* swallow — WS settings_update will reconcile if it arrives */
+        }
+    }, [ttsMuted]);
+
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if (!e.altKey) return;
+            const target = e.target as HTMLElement | null;
+            const tag = target?.tagName;
+            if (
+                tag === 'INPUT' ||
+                tag === 'TEXTAREA' ||
+                tag === 'SELECT' ||
+                target?.isContentEditable
+            ) {
+                return;
+            }
+            const key = e.key.toLowerCase();
+            if (key === 'm') {
+                e.preventDefault();
+                void toggleMute();
+            } else if (key === 's') {
+                e.preventDefault();
+                setSettingsOpen(v => !v);
+            } else if (key === 'h') {
+                e.preventDefault();
+                setHistoryOpen(v => !v);
+            }
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [toggleMute]);
+
     // Tick every 5s so age-based filtering re-evaluates
     const [now, setNow] = useState(Date.now());
     useEffect(() => {
@@ -262,6 +308,31 @@ export function RaijinRecs() {
                 pointerEvents: 'none',
                 zIndex: 11,
             }} />
+
+            {/* Phase 5b.4: backend-offline banner — engine is up but WS disconnected. */}
+            {serverStatus === 'ready' && connStatus === 'disconnected' && (
+                <div
+                    role="alert"
+                    aria-live="polite"
+                    style={{
+                        position: 'absolute',
+                        top: pip.sp3,
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        background: pip.bgInset,
+                        border: `2px solid ${pip.red}`,
+                        color: pip.red,
+                        padding: `${pip.sp2}px ${pip.sp4}px`,
+                        fontFamily: pip.font,
+                        fontSize: pip.textSm,
+                        letterSpacing: 1,
+                        zIndex: 30,
+                        boxShadow: glow(pip.red, 10),
+                    }}
+                >
+                    RAIJIN ENGINE OFFLINE · coaching paused · reconnecting…
+                </div>
+            )}
 
             {/* Server controls + Connection status + Settings gear */}
             <div style={{
@@ -409,7 +480,30 @@ export function RaijinRecs() {
     );
 }
 
-/** Decode + play base64-encoded MP3 chunks via Web Audio API. */
+/** Play a 200ms 440Hz sine "ping" via the shared AudioContext. 5b.2 cue. */
+function playSonicPing(ctx: AudioContext): void {
+    try {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = 440;
+        // Fade in/out to avoid a click at start/end.
+        const t = ctx.currentTime;
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.12, t + 0.015);
+        gain.gain.linearRampToValueAtTime(0, t + 0.2);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(t);
+        osc.stop(t + 0.22);
+    } catch {
+        /* silent — ping is a nice-to-have */
+    }
+}
+
+/** Decode + play base64-encoded MP3 chunks via Web Audio API. Plays a short
+ * ping first, then schedules the MP3 ~220ms later so the cue doesn't overlap
+ * the voice. Opt-out via TTS mute — the entire path is gated on TTS settings
+ * upstream, so no extra check needed here. */
 async function playTTSChunks(
     chunksB64: string[],
     ctxRef: React.MutableRefObject<AudioContext | null>,
@@ -435,11 +529,13 @@ async function playTTSChunks(
         }
         const ctx = ctxRef.current;
         if (!ctx) return;
+        // Fire the ping immediately and schedule the voice after it finishes.
+        playSonicPing(ctx);
         const buffer = await ctx.decodeAudioData(merged.buffer);
         const source = ctx.createBufferSource();
         source.buffer = buffer;
         source.connect(ctx.destination);
-        source.start();
+        source.start(ctx.currentTime + 0.22);
     } catch {
         // Silent — TTS failure shouldn't crash the UI
     }

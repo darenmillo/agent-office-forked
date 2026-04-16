@@ -8,6 +8,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { pip, glow, glowText } from '../raijinTheme';
 import { HeroListEntry, RAIJIN_API, HERO_ICON_CDN } from '../raijinTypes';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 interface Props {
     open: boolean;
@@ -22,6 +23,7 @@ export function RaijinEnemyPicker({ open, onClose, onConfirm }: Props) {
     const [loading, setLoading] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const modalRef = useFocusTrap<HTMLDivElement>(open);
 
     // Fetch hero list once when opened
     useEffect(() => {
@@ -141,8 +143,10 @@ export function RaijinEnemyPicker({ open, onClose, onConfirm }: Props) {
 
             {/* Modal panel */}
             <div
+                ref={modalRef}
                 className="raijin-picker-modal"
                 role="dialog"
+                aria-modal="true"
                 aria-label="Set enemy heroes"
                 style={{
                     position: 'fixed',

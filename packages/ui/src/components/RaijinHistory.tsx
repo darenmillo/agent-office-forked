@@ -11,6 +11,7 @@ import {
     RAIJIN_API,
 } from '../raijinTypes';
 import { pip, glow, glowText } from '../raijinTheme';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 interface Props {
     open: boolean;
@@ -37,6 +38,7 @@ export function RaijinHistory({ open, onClose, onSelectMatch }: Props) {
     const [entries, setEntries] = useState<PostGameHistoryEntry[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const modalRef = useFocusTrap<HTMLDivElement>(open);
 
     useEffect(() => {
         if (!open) return;
@@ -123,8 +125,10 @@ export function RaijinHistory({ open, onClose, onSelectMatch }: Props) {
                 }}
             />
             <div
+                ref={modalRef}
                 className="raijin-hist-modal"
                 role="dialog"
+                aria-modal="true"
                 aria-label="Raijin match history"
                 style={{
                     position: 'fixed',

@@ -9,6 +9,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { pip, glow, glowText } from '../raijinTheme';
 import { RAIJIN_API, RecUrgency } from '../raijinTypes';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 interface Props {
     open: boolean;
@@ -29,6 +30,7 @@ export function RaijinSettings({
 }: Props) {
     const [busy, setBusy] = useState(false);
     const [testStatus, setTestStatus] = useState<string | null>(null);
+    const modalRef = useFocusTrap<HTMLDivElement>(open);
 
     useEffect(() => {
         if (!open) return;
@@ -110,8 +112,10 @@ export function RaijinSettings({
                 }}
             />
             <div
+                ref={modalRef}
                 className="raijin-settings-modal"
                 role="dialog"
+                aria-modal="true"
                 aria-label="Raijin settings"
                 style={{
                     position: 'fixed',
@@ -278,6 +282,24 @@ export function RaijinSettings({
                         )}
                     </div>
                 )}
+
+                {/* Phase 5b.3 keyboard shortcuts footer */}
+                <div style={{
+                    marginTop: pip.sp4,
+                    paddingTop: pip.sp3,
+                    borderTop: `1px solid ${pip.amberGhost}`,
+                    fontSize: pip.textSm,
+                    color: pip.amber,
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: pip.sp3,
+                }}>
+                    <span style={{ color: pip.amberFaint, letterSpacing: 1 }}>SHORTCUTS</span>
+                    <span><kbd style={{ color: pip.amber }}>Alt+M</kbd> mute</span>
+                    <span><kbd style={{ color: pip.amber }}>Alt+S</kbd> settings</span>
+                    <span><kbd style={{ color: pip.amber }}>Alt+H</kbd> history</span>
+                    <span><kbd style={{ color: pip.amber }}>Esc</kbd> close</span>
+                </div>
             </div>
         </>
     );

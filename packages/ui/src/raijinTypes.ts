@@ -126,14 +126,30 @@ export interface DimensionGrade {
     callout: string;
 }
 
+/** Opus 4.7-produced structured coaching narrative (Phase 5a). Three action cards + summary. */
+export interface StructuredNarrative {
+    summary: string;
+    what_went_well: string[];
+    what_to_improve: string[];
+    try_next_game: string[];
+}
+
 export interface PostGameReport {
     match_id: string;
     hero: string;
     result: 'WIN' | 'LOSS' | 'UNKNOWN';
     duration: number;
     grades: DimensionGrade[];
-    narrative: string;
+    /** Phase 5a: tri-state — null (not yet enriched), StructuredNarrative (new), or string (v4.0 back-compat). */
+    narrative: StructuredNarrative | string | null;
     key_moments: Array<{ type: string; clock_time: number; wall_time: string; data: Record<string, unknown> }>;
+}
+
+/** Phase 5c — Sonnet 4.6 per-death analysis, persists in the death panel across respawn. */
+export interface DeathAnalysis {
+    likely_cause: string;
+    what_to_change: string;
+    item_priority: string;
 }
 
 export interface PostGameHistoryEntry {

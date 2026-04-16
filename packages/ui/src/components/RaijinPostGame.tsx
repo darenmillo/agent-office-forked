@@ -3,8 +3,8 @@
  * 5 letter-grade dimension cards + optional LLM narrative + key moments list.
  * Auto-mounts from RaijinRecs when a game_ended message arrives with a
  * post-game report attached (or fetched from /api/post-game/latest). */
-import React, { useEffect, useState } from 'react';
-import { DimensionGrade, PostGameReport, RAIJIN_API } from '../raijinTypes';
+import React, { useState } from 'react';
+import { DimensionGrade, PostGameReport, RAIJIN_API, StructuredNarrative } from '../raijinTypes';
 import { pip, glow, glowText } from '../raijinTheme';
 
 interface Props {
@@ -127,32 +127,12 @@ export function RaijinPostGame({ report, onDismiss, onViewHistory }: Props) {
                     ))}
                 </div>
 
-                {/* Narrative (LLM-generated, may be empty) */}
-                {report.narrative && (
-                    <div style={{
-                        borderLeft: `3px solid ${pip.amber}`,
-                        padding: `${pip.sp2}px ${pip.sp3}px`,
-                        background: pip.bgInset,
-                        marginBottom: pip.sp4,
-                        lineHeight: 1.6,
-                        fontSize: pip.textBase,
-                        color: pip.amber,
-                        whiteSpace: 'pre-wrap',
-                    }}>
-                        {report.narrative}
-                    </div>
-                )}
-                {!report.narrative && (
-                    <div style={{
-                        padding: pip.sp2,
-                        fontSize: pip.textSm,
-                        color: pip.amber,
-                        fontStyle: 'italic',
-                        marginBottom: pip.sp4,
-                    }}>
-                        (LLM narrative unavailable — grading is clinical only.)
-                    </div>
-                )}
+                {/* Narrative — Phase 5a structured cards, v4.0 prose back-compat, or regen prompt */}
+                <NarrativeBlock
+                    narrative={report.narrative}
+                    matchId={report.match_id}
+                />
+
 
                 {/* Key moments */}
                 {report.key_moments.length > 0 && (
@@ -217,6 +197,185 @@ export function RaijinPostGame({ report, onDismiss, onViewHistory }: Props) {
                 </div>
             </div>
         </>
+    );
+}
+
+function isStructured(n: PostGameReport['narrative']): n is StructuredNarrative {
+    return !!n && typeof n === 'object' && 'summary' in n;
+}
+
+function NarrativeBlock(props: {
+    narrative: PostGameReport['narrative'];
+    matchId: string;
+}) {
+    const [pendingRegen, setPendingRegen] = useState(false);
+    const [regenError, setRegenError] = useState<string | null>(null);
+    const [localNarrative, setLocalNarrative] = useState<PostGameReport['narrative']>(props.narrative);
+
+    const narrative = localNarrative ?? props.narrative;
+
+    const onRegen = async () => {
+        setPendingRegen(true);
+        setRegenError(null);
+        try {
+            const res = await fetch(`${RAIJIN_API}/api/post-game/${props.matchId}/enrich`, {
+                method: 'POST',
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const fresh = (await res.json()) as PostGameReport;
+            setLocalNarrative(fresh.narrative);
+        } catch (e: any) {
+            setRegenError(e?.message ?? 'Failed to regenerate narrative.');
+        } finally {
+            setPendingRegen(false);
+        }
+    };
+
+    // Structured — three cards + summary quote
+    if (isStructured(narrative)) {
+        return (
+            <div style={{ marginBottom: pip.sp4 }}>
+                <div style={{
+                    borderLeft: `3px solid ${pip.amber}`,
+                    padding: `${pip.sp2}px ${pip.sp3}px`,
+                    background: pip.bgInset,
+                    marginBottom: pip.sp3,
+                    lineHeight: 1.6,
+                    fontSize: pip.textBase,
+                    color: pip.amber,
+                    fontStyle: 'italic',
+                }}>
+                    {narrative.summary}
+                </div>
+                <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                    gap: pip.sp3,
+                }}>
+                    <NarrativeCard
+                        label="WHAT WENT WELL"
+                        accent={pip.green}
+                        bullets={narrative.what_went_well}
+                    />
+                    <NarrativeCard
+                        label="WHAT TO IMPROVE"
+                        accent={pip.red}
+                        bullets={narrative.what_to_improve}
+                    />
+                    <NarrativeCard
+                        label="TRY NEXT GAME"
+                        accent={pip.amber}
+                        bullets={narrative.try_next_game}
+                    />
+                </div>
+            </div>
+        );
+    }
+
+    // Legacy prose string — single card, preserves newline formatting
+    if (typeof narrative === 'string' && narrative.trim()) {
+        return (
+            <div style={{
+                borderLeft: `3px solid ${pip.amber}`,
+                padding: `${pip.sp2}px ${pip.sp3}px`,
+                background: pip.bgInset,
+                marginBottom: pip.sp4,
+                lineHeight: 1.6,
+                fontSize: pip.textBase,
+                color: pip.amber,
+                whiteSpace: 'pre-wrap',
+            }}>
+                {narrative}
+            </div>
+        );
+    }
+
+    // Null / empty — pending enrichment, show REGEN NOW
+    return (
+        <div style={{
+            padding: pip.sp3,
+            border: `1px dashed ${pip.amberFaint}`,
+            background: pip.bgInset,
+            marginBottom: pip.sp4,
+            display: 'flex',
+            alignItems: 'center',
+            gap: pip.sp3,
+        }}>
+            <span style={{
+                fontSize: pip.textSm,
+                color: pip.amber,
+                fontStyle: 'italic',
+                flex: 1,
+            }}>
+                {pendingRegen
+                    ? 'Regenerating narrative via Opus 4.7…'
+                    : (regenError
+                        ? `Narrative regen failed: ${regenError}`
+                        : 'Narrative regenerating in the background…')}
+            </span>
+            <button
+                onClick={onRegen}
+                disabled={pendingRegen}
+                aria-label="Regenerate post-game narrative now"
+                style={{
+                    background: 'transparent',
+                    border: `1px solid ${pip.amber}`,
+                    color: pip.amber,
+                    padding: '6px 14px',
+                    fontFamily: pip.font,
+                    fontSize: pip.textSm,
+                    letterSpacing: 1,
+                    cursor: pendingRegen ? 'wait' : 'pointer',
+                    minHeight: 32,
+                    opacity: pendingRegen ? 0.6 : 1,
+                }}
+            >
+                REGEN NOW
+            </button>
+        </div>
+    );
+}
+
+function NarrativeCard(props: { label: string; accent: string; bullets: string[] }) {
+    return (
+        <div style={{
+            border: `1px solid ${pip.amberFaint}`,
+            background: pip.bgInset,
+            padding: pip.sp3,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: pip.sp2,
+        }}>
+            <div style={{
+                fontSize: pip.textSm,
+                color: props.accent,
+                letterSpacing: 1,
+                borderBottom: `1px solid ${pip.amberGhost}`,
+                paddingBottom: pip.sp1,
+                textShadow: glowText(props.accent, 4),
+            }}>
+                {props.label}
+            </div>
+            {props.bullets.length === 0 ? (
+                <div style={{
+                    fontSize: pip.textSm, color: pip.amberFaint, fontStyle: 'italic',
+                }}>
+                    (none)
+                </div>
+            ) : (
+                <ul style={{
+                    margin: 0,
+                    paddingLeft: 18,
+                    fontSize: pip.textSm,
+                    color: pip.amber,
+                    lineHeight: 1.5,
+                }}>
+                    {props.bullets.map((b, i) => (
+                        <li key={i} style={{ marginBottom: 4 }}>{b}</li>
+                    ))}
+                </ul>
+            )}
+        </div>
     );
 }
 
