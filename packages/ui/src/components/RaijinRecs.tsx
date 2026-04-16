@@ -140,9 +140,22 @@ export function RaijinRecs() {
                             const minNewItemPrio = newItemPriorities.length
                                 ? Math.min(...newItemPriorities) : Infinity;
 
+                            // v4.1.4: when a new live-coaching "Raijin says" rec
+                            // arrives, drop any older live-coaching cards. Necro
+                            // match had 11 "Raijin says (trigger)" cards stacked
+                            // by end of game. Matchup ("<hero>: game plan…") and
+                            // death ("Coach says") LLM cards stay — they're
+                            // different voices with different titles.
+                            const newLiveLLM = stamped.some(r =>
+                                r.title.startsWith('Raijin says '),
+                            );
+
                             const filtered = prev.filter(old => {
                                 if (old.category === 'SKILL' && newSkill) return false;
                                 if (old.category === 'ITEM' && old.priority < minNewItemPrio) return false;
+                                if (newLiveLLM && old.title.startsWith('Raijin says ')) {
+                                    return false;
+                                }
                                 return true;
                             });
 
@@ -297,9 +310,20 @@ export function RaijinRecs() {
         GENERAL: Infinity, // never expire — patch tips, hero knowledge, tower state
     };
 
+    // v4.1.4: Live-coaching "Raijin says" cards age out after 8 min regardless
+    // of category (they're GENERAL by default which would otherwise be
+    // Infinity — patch tips + hero knowledge + matchup + tower intel stay
+    // forever, live-coaching doesn't). Necro match had every 5-min milestone
+    // and every death's LLM output piling up through 30+ min of game time.
+    const LIVE_LLM_MAX_AGE = 8 * 60_000;
+
     const visibleRecs = useMemo(() => recommendations.filter(r => {
+        const age = now - (r.receivedAt ?? now);
+        if (r.title.startsWith('Raijin says ')) {
+            return age < LIVE_LLM_MAX_AGE;
+        }
         const maxAge = REC_MAX_AGE[r.category] ?? 300_000;
-        return (now - (r.receivedAt ?? now)) < maxAge;
+        return age < maxAge;
     }), [recommendations, now]);
 
     const statusColor = connStatus === 'connected' ? pip.green
