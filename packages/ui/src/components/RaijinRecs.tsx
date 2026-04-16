@@ -163,6 +163,17 @@ export function RaijinRecs() {
                         .then(r => (r.ok ? r.json() : null))
                         .then(data => { if (data) setPostGameReport(data); })
                         .catch(() => { /* no report available */ });
+                } else if (update.type === 'post_game_update') {
+                    // v4.1.1: async enrichment (narrative or OpenDota WIN/LOSS)
+                    // landed. Swap the currently-displayed report if the match
+                    // matches. Only accept when the panel is open — otherwise
+                    // the user would get jolted back into a dismissed report.
+                    const d = update.data as { match_id?: string; report?: PostGameReport };
+                    if (d.report && d.match_id) {
+                        setPostGameReport(prev =>
+                            prev && prev.match_id === d.match_id ? d.report! : prev,
+                        );
+                    }
                 } else if (update.type === 'settings_update') {
                     const d = update.data as {
                         enabled?: boolean;
@@ -355,10 +366,57 @@ export function RaijinRecs() {
                 fontFamily: pip.font,
                 display: 'flex', alignItems: 'center', gap: pip.sp3,
             }}>
+                {/* v4.1.1: persistent reach-in to the last post-game report.
+                    Previously the only way to re-open a dismissed report was
+                    Alt+Y → click the top history row, which isn't obvious. */}
+                <button
+                    onClick={async () => {
+                        try {
+                            const r = await fetch(`${RAIJIN_API}/api/post-game/latest`);
+                            if (r.ok) {
+                                const data = await r.json();
+                                if (data) setPostGameReport(data);
+                            }
+                        } catch { /* no engine / no report */ }
+                    }}
+                    aria-label="Open the most recent post-game report"
+                    title="Last report"
+                    style={{
+                        background: 'transparent',
+                        border: `1px solid ${pip.amberFaint}`,
+                        color: pip.amber,
+                        padding: '4px 10px',
+                        fontFamily: pip.font,
+                        fontSize: pip.textSm,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        minHeight: 32,
+                    }}
+                >
+                    LAST REPORT
+                </button>
+                <button
+                    onClick={() => setHistoryOpen(true)}
+                    aria-label="Open match history (Alt+Y)"
+                    title="History (Alt+Y)"
+                    style={{
+                        background: 'transparent',
+                        border: `1px solid ${pip.amberFaint}`,
+                        color: pip.amber,
+                        padding: '4px 10px',
+                        fontFamily: pip.font,
+                        fontSize: pip.textSm,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        minHeight: 32,
+                    }}
+                >
+                    HISTORY
+                </button>
                 <button
                     onClick={() => setSettingsOpen(true)}
-                    aria-label="Open Raijin settings"
-                    title="Settings"
+                    aria-label="Open Raijin settings (Alt+S)"
+                    title="Settings (Alt+S)"
                     style={{
                         background: 'transparent',
                         border: `1px solid ${pip.amberFaint}`,

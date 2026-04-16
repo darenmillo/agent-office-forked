@@ -87,7 +87,8 @@ export interface UIUpdate {
         | 'game_ended'
         | 'enemy_intel'
         | 'tts_audio'
-        | 'settings_update';
+        | 'settings_update'
+        | 'post_game_update';   // v4.1.1: async narrative / OpenDota result landed
     data: Record<string, unknown>;
     timestamp: number;
 }
