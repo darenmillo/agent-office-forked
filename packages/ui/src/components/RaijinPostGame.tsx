@@ -3,7 +3,7 @@
  * 5 letter-grade dimension cards + optional LLM narrative + key moments list.
  * Auto-mounts from RaijinRecs when a game_ended message arrives with a
  * post-game report attached (or fetched from /api/post-game/latest). */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { DimensionGrade, PostGameReport, RAIJIN_API, StructuredNarrative } from '../raijinTypes';
 import { pip, glow, glowText } from '../raijinTheme';
 
@@ -96,6 +96,19 @@ export function RaijinPostGame({ report, onDismiss, onViewHistory }: Props) {
                     }}>
                         {report.hero.replace(/_/g, ' ').toUpperCase()} · {minutes}:{seconds.toString().padStart(2, '0')}
                     </span>
+                    {report.result === 'UNKNOWN' && (
+                        <span
+                            title="OpenDota indexes new matches ~5-15 minutes after they end. The result will update automatically."
+                            style={{
+                                fontSize: pip.textXs,
+                                color: pip.amberDim,
+                                letterSpacing: 1,
+                                fontStyle: 'italic',
+                            }}
+                        >
+                            (awaiting OpenDota indexing — updates automatically)
+                        </span>
+                    )}
                     <span style={{ flex: 1 }} />
                     <button
                         onClick={onDismiss}
@@ -211,6 +224,14 @@ function NarrativeBlock(props: {
     const [pendingRegen, setPendingRegen] = useState(false);
     const [regenError, setRegenError] = useState<string | null>(null);
     const [localNarrative, setLocalNarrative] = useState<PostGameReport['narrative']>(props.narrative);
+
+    // Resync when the parent prop changes (e.g. refetch from /api/post-game/latest
+    // after a WS update). Without this, a stale narrative from a previous open
+    // would persist across match boundaries.
+    useEffect(() => {
+        setLocalNarrative(props.narrative);
+        setRegenError(null);
+    }, [props.narrative, props.matchId]);
 
     const narrative = localNarrative ?? props.narrative;
 

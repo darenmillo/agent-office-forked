@@ -246,7 +246,9 @@ export function RaijinRecs() {
             } else if (key === 's') {
                 e.preventDefault();
                 setSettingsOpen(v => !v);
-            } else if (key === 'h') {
+            } else if (key === 'y') {
+                // Y for "yester-Y" (history). Alt+H clashes with Firefox's
+                // Help menu, so Alt+Y is safer across browsers.
                 e.preventDefault();
                 setHistoryOpen(v => !v);
             }
@@ -261,6 +263,19 @@ export function RaijinRecs() {
         const id = setInterval(() => setNow(Date.now()), 5000);
         return () => clearInterval(id);
     }, []);
+
+    // Phase 5b.4: grace window on the offline banner. connStatus defaults to
+    // 'disconnected' on mount, so the banner would flash on every page load.
+    // Only show once disconnection has lasted ≥3s.
+    const [showOfflineBanner, setShowOfflineBanner] = useState(false);
+    useEffect(() => {
+        if (serverStatus !== 'ready' || connStatus !== 'disconnected') {
+            setShowOfflineBanner(false);
+            return;
+        }
+        const t = setTimeout(() => setShowOfflineBanner(true), 3000);
+        return () => clearTimeout(t);
+    }, [serverStatus, connStatus]);
 
     // Category-based expiry — different rec types have different shelf lives
     const REC_MAX_AGE: Record<string, number> = {
@@ -310,7 +325,7 @@ export function RaijinRecs() {
             }} />
 
             {/* Phase 5b.4: backend-offline banner — engine is up but WS disconnected. */}
-            {serverStatus === 'ready' && connStatus === 'disconnected' && (
+            {showOfflineBanner && (
                 <div
                     role="alert"
                     aria-live="polite"

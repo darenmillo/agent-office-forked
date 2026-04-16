@@ -11,7 +11,7 @@
  * Visible only when `heroData.alive === false`. Auto-hides on respawn.
  * All animations respect prefers-reduced-motion.
  */
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { HeroData, Recommendation, effectiveUrgency } from '../raijinTypes';
 import { pip, glow, glowText } from '../raijinTheme';
 
@@ -50,9 +50,19 @@ export function RaijinDeathPanel({ heroData, recommendations }: Props) {
     const coachSaysFresh = coachSays
         && (Date.now() - (coachSays.receivedAt ?? 0)) < 45_000;
 
+    // Manual dismiss for the alive+persisted Coach Says state. User clicks ×
+    // to kill the card before the 45s auto-expire. Reset on new death so the
+    // next cycle's Coach Says isn't pre-dismissed.
+    const [dismissedCoachSaysId, setDismissedCoachSaysId] = useState<number | null>(null);
+    useEffect(() => {
+        if (!alive) setDismissedCoachSaysId(null);
+    }, [alive]);
+    const dismissed = coachSays != null
+        && dismissedCoachSaysId === (coachSays.receivedAt ?? 0);
+
     if (!heroData) return null;
-    // Skip if alive AND no fresh coach-says to persist
-    if (alive && !coachSaysFresh) return null;
+    // Skip if alive AND (no fresh coach-says OR user dismissed it)
+    if (alive && (!coachSaysFresh || dismissed)) return null;
 
     const gold = heroData.gold ?? 0;
     const respawn = heroData.respawn_seconds ?? 0;
@@ -83,21 +93,38 @@ export function RaijinDeathPanel({ heroData, recommendations }: Props) {
                 className={alive ? 'raijin-death-panel-compact' : 'raijin-death-panel'}
                 role="region"
                 aria-label={alive ? 'Coach says — last death' : 'Death coaching panel'}
-                style={{
-                    position: 'absolute',
-                    // Centred over the empty left column, above the action bar
-                    top: 110,
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    width: 'min(540px, 40vw)',
-                    padding: pip.sp4,
-                    background: pip.bgPanel,
-                    border: `3px solid ${alive ? pip.amber : pip.red}`,
-                    boxShadow: glow(alive ? pip.amber : pip.red, alive ? 8 : 16),
-                    fontFamily: pip.font,
-                    color: pip.amber,
-                    zIndex: 15,
-                }}
+                style={
+                    alive
+                        // Alive: pin compact to top-right so it doesn't cover
+                        // the minimap/live action. Narrower; mirrors toast sizing.
+                        ? {
+                            position: 'absolute',
+                            top: 60,
+                            right: 24,
+                            width: 'min(360px, 30vw)',
+                            padding: pip.sp3,
+                            background: pip.bgPanel,
+                            border: `2px solid ${pip.amber}`,
+                            boxShadow: glow(pip.amber, 6),
+                            fontFamily: pip.font,
+                            color: pip.amber,
+                            zIndex: 15,
+                        }
+                        : {
+                            position: 'absolute',
+                            top: 110,
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            width: 'min(540px, 40vw)',
+                            padding: pip.sp4,
+                            background: pip.bgPanel,
+                            border: `3px solid ${pip.red}`,
+                            boxShadow: glow(pip.red, 16),
+                            fontFamily: pip.font,
+                            color: pip.amber,
+                            zIndex: 15,
+                        }
+                }
             >
                 {/* Header — differs by state */}
                 {!alive ? (
@@ -125,15 +152,42 @@ export function RaijinDeathPanel({ heroData, recommendations }: Props) {
                     </>
                 ) : (
                     <div style={{
-                        fontSize: pip.textLg,
-                        fontWeight: 700,
-                        color: pip.amber,
-                        letterSpacing: 1,
-                        textShadow: glowText(pip.amber, 4),
-                        textAlign: 'center',
-                        marginBottom: pip.sp3,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: pip.sp2,
+                        marginBottom: pip.sp2,
                     }}>
-                        COACH SAYS — LAST DEATH
+                        <span style={{
+                            fontSize: pip.textBase,
+                            fontWeight: 700,
+                            color: pip.amber,
+                            letterSpacing: 1,
+                            textShadow: glowText(pip.amber, 4),
+                            flex: 1,
+                        }}>
+                            COACH SAYS — LAST DEATH
+                        </span>
+                        <button
+                            onClick={() =>
+                                setDismissedCoachSaysId(coachSays?.receivedAt ?? 0)
+                            }
+                            aria-label="Dismiss coach says"
+                            title="Dismiss"
+                            style={{
+                                background: 'transparent',
+                                border: `1px solid ${pip.amberFaint}`,
+                                color: pip.amber,
+                                width: 24,
+                                height: 24,
+                                fontFamily: pip.font,
+                                fontSize: pip.textSm,
+                                cursor: 'pointer',
+                                lineHeight: 1,
+                                padding: 0,
+                            }}
+                        >
+                            ×
+                        </button>
                     </div>
                 )}
 
@@ -147,15 +201,20 @@ export function RaijinDeathPanel({ heroData, recommendations }: Props) {
                             marginBottom: pip.sp3,
                             background: pip.bgInset,
                         }}>
-                        <div style={{
-                            fontSize: pip.textXs,
-                            letterSpacing: 1,
-                            color: pip.amberFaint,
-                            marginBottom: pip.sp1,
-                            textTransform: 'uppercase',
-                        }}>
-                            Coach says
-                        </div>
+                        {/* Only show the "COACH SAYS" micro-label when we're
+                            still in the dead state — the compact alive panel
+                            already has "COACH SAYS — LAST DEATH" as its header. */}
+                        {!alive && (
+                            <div style={{
+                                fontSize: pip.textXs,
+                                letterSpacing: 1,
+                                color: pip.amberDim,  // WCAG AA: ~4.7:1 on bgInset
+                                marginBottom: pip.sp1,
+                                textTransform: 'uppercase',
+                            }}>
+                                Coach says
+                            </div>
+                        )}
                         <div style={{
                             fontSize: pip.textBase,
                             color: pip.amber,

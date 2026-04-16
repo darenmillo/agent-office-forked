@@ -297,7 +297,7 @@ export function RaijinSettings({
                     <span style={{ color: pip.amberFaint, letterSpacing: 1 }}>SHORTCUTS</span>
                     <span><kbd style={{ color: pip.amber }}>Alt+M</kbd> mute</span>
                     <span><kbd style={{ color: pip.amber }}>Alt+S</kbd> settings</span>
-                    <span><kbd style={{ color: pip.amber }}>Alt+H</kbd> history</span>
+                    <span><kbd style={{ color: pip.amber }}>Alt+Y</kbd> history</span>
                     <span><kbd style={{ color: pip.amber }}>Esc</kbd> close</span>
                 </div>
             </div>
