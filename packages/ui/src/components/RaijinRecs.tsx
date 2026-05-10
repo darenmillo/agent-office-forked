@@ -15,6 +15,7 @@ import { RaijinStrategy } from './RaijinStrategy';
 import { RaijinActionBar } from './RaijinActionBar';
 import { RaijinTeamIntel } from './RaijinTeamIntel';
 import { RaijinEnemyPicker } from './RaijinEnemyPicker';
+import { RaijinScoutingForm } from './RaijinScoutingForm';
 import { RaijinDeathPanel } from './RaijinDeathPanel';
 import { RaijinSettings } from './RaijinSettings';
 import { RaijinPostGame } from './RaijinPostGame';
@@ -36,6 +37,8 @@ export function RaijinRecs() {
     const [enemySource, setEnemySource] = useState<EnemySource>('none');
     const [pickerOpen, setPickerOpen] = useState(false);
     const pickerAutoOpenedRef = useRef<boolean>(false);
+    // v5.0 Phase 4: scouting form state — pre/mid-game role + lane + ally/enemy roles
+    const [scoutingOpen, setScoutingOpen] = useState(false);
     // Phase 3: TTS settings (wired through to RaijinActionBar mute button)
     const [ttsEnabled, setTtsEnabled] = useState(false);
     const [ttsMuted, setTtsMuted] = useState(false);
@@ -438,6 +441,24 @@ export function RaijinRecs() {
                     HISTORY
                 </button>
                 <button
+                    onClick={() => setScoutingOpen(true)}
+                    aria-label="Open scouting form to set roles + lane"
+                    title="Scouting (set roles + lane before queue)"
+                    style={{
+                        background: 'transparent',
+                        border: `1px solid ${pip.amberFaint}`,
+                        color: pip.amber,
+                        padding: '4px 10px',
+                        fontFamily: pip.font,
+                        fontSize: pip.textSm,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        minHeight: 32,
+                    }}
+                >
+                    {'\u25b8'} SCOUTING
+                </button>
+                <button
                     onClick={() => setSettingsOpen(true)}
                     aria-label="Open Raijin settings (Alt+S)"
                     title="Settings (Alt+S)"
@@ -533,6 +554,19 @@ export function RaijinRecs() {
                 onConfirm={() => {
                     // After manual set, we know the source is 'manual' — skip polling wait
                     setEnemySource('manual');
+                }}
+            />
+
+            {/* v5.0 Phase 4: scouting form — manually opened from SCOUTING button.
+                When submitted with enemies, it also flips enemy_source to 'manual'
+                so the badge stays in sync without a second API call. */}
+            <RaijinScoutingForm
+                open={scoutingOpen}
+                onClose={() => setScoutingOpen(false)}
+                onConfirm={({ enemies }) => {
+                    if (enemies && enemies.some(e => e.hero.trim() && e.role)) {
+                        setEnemySource('manual');
+                    }
                 }}
             />
 
