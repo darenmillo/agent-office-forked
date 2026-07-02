@@ -49,6 +49,10 @@ export function RaijinRecs() {
     const [postGameReport, setPostGameReport] = useState<PostGameReport | null>(null);
     // v6 Phase 3: FARM/FIGHT/PUSH stance banner
     const [stance, setStance] = useState<StanceData | null>(null);
+    // v6 Phase 4: patch staleness (engine knowledge base vs live Valve patch)
+    const [patchStatus, setPatchStatus] = useState<{
+        engine_version: string; live_version: string; stale: boolean;
+    } | null>(null);
     const [historyOpen, setHistoryOpen] = useState(false);
     // Web Audio playback context for TTS chunks — lazy-init on first use
     const audioCtxRef = useRef<AudioContext | null>(null);
@@ -212,7 +216,9 @@ export function RaijinRecs() {
                         void playTTSChunks(d.chunks, audioCtxRef);
                     }
                 } else if (update.type === 'connection') {
-                    if (!(update.data as any).game_active) {
+                    const cd = update.data as any;
+                    if (cd.patch_status) setPatchStatus(cd.patch_status);
+                    if ('game_active' in cd && !cd.game_active) {
                         setHeroData(null);
                         setRecommendations([]);
                     }
@@ -390,6 +396,31 @@ export function RaijinRecs() {
                     }}
                 >
                     RAIJIN ENGINE OFFLINE · coaching paused · reconnecting…
+                </div>
+            )}
+
+            {/* v6 Phase 4: patch-staleness banner — knowledge base behind live patch */}
+            {patchStatus?.stale && !showOfflineBanner && (
+                <div
+                    role="status"
+                    style={{
+                        position: 'absolute',
+                        top: pip.sp3,
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        background: pip.bgInset,
+                        border: `2px solid ${pip.amber}`,
+                        color: pip.amberBright,
+                        padding: `${pip.sp1}px ${pip.sp4}px`,
+                        fontFamily: pip.font,
+                        fontSize: pip.textSm,
+                        letterSpacing: 1,
+                        zIndex: 29,
+                        boxShadow: glow(pip.amber, 6),
+                    }}
+                >
+                    PATCH DRIFT: engine on {patchStatus.engine_version} · live is{' '}
+                    {patchStatus.live_version} · run /raijin-patch-update
                 </div>
             )}
 
