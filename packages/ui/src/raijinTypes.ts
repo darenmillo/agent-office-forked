@@ -62,7 +62,9 @@ export function effectiveUrgency(rec: Recommendation): RecUrgency {
     return 'ROUTINE';
 }
 
-export type EnemySource = 'gsi_draft' | 'bot' | 'manual' | 'none';
+// v6: minimap (GSI minimap component, pending probe) and capture (screen-
+// capture portrait matching) outrank gsi_draft/bot; manual is a sticky override.
+export type EnemySource = 'minimap' | 'capture' | 'gsi_draft' | 'bot' | 'manual' | 'none';
 
 export interface BotStatus {
     status: string;
