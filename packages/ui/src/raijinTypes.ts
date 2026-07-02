@@ -90,9 +90,20 @@ export interface UIUpdate {
         | 'enemy_intel'
         | 'tts_audio'
         | 'settings_update'
-        | 'post_game_update';   // v4.1.1: async narrative / OpenDota result landed
+        | 'post_game_update'    // v4.1.1: async narrative / OpenDota result landed
+        | 'timers'              // v6: timer-rail state (absolute clock values)
+        | 'stance';             // v6: FARM/FIGHT/PUSH stance banner
     data: Record<string, unknown>;
     timestamp: number;
+}
+
+/** v6: stance-engine decision rendered by RaijinStanceBanner. */
+export interface StanceData {
+    stance: 'FARM' | 'FIGHT' | 'PUSH';
+    reason: string;
+    confidence: number;
+    discipline: boolean;
+    inputs?: Record<string, unknown>;
 }
 
 /** Per-player data from GC Bot GetRealtimeStats (~2 min delayed). */

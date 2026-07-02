@@ -20,7 +20,8 @@ import { RaijinDeathPanel } from './RaijinDeathPanel';
 import { RaijinSettings } from './RaijinSettings';
 import { RaijinPostGame } from './RaijinPostGame';
 import { RaijinHistory } from './RaijinHistory';
-import type { PostGameReport, RecUrgency } from '../raijinTypes';
+import { RaijinStanceBanner } from './RaijinStanceBanner';
+import type { PostGameReport, RecUrgency, StanceData } from '../raijinTypes';
 
 const OFFICE_API = 'http://localhost:3000';
 
@@ -46,6 +47,8 @@ export function RaijinRecs() {
     const [settingsOpen, setSettingsOpen] = useState(false);
     // Phase 4: post-game report state
     const [postGameReport, setPostGameReport] = useState<PostGameReport | null>(null);
+    // v6 Phase 3: FARM/FIGHT/PUSH stance banner
+    const [stance, setStance] = useState<StanceData | null>(null);
     const [historyOpen, setHistoryOpen] = useState(false);
     // Web Audio playback context for TTS chunks — lazy-init on first use
     const audioCtxRef = useRef<AudioContext | null>(null);
@@ -168,11 +171,14 @@ export function RaijinRecs() {
                     }
                 } else if (update.type === 'enemy_intel') {
                     setEnemyIntel(update.data as unknown as EnemyIntelData);
+                } else if (update.type === 'stance') {
+                    setStance(update.data as unknown as StanceData);
                 } else if (update.type === 'game_ended') {
                     setHeroData(null);
                     setEnemyIntel(null);
                     setRecommendations([]);
                     setEnemySource('none');
+                    setStance(null);
                     pickerAutoOpenedRef.current = false;
                     // Phase 4: fetch the latest post-game report and surface it
                     fetch(`${RAIJIN_API}/api/post-game/latest`)
@@ -339,7 +345,7 @@ export function RaijinRecs() {
             position: 'absolute', top: 0, left: 56, right: 0, bottom: 0,
             display: 'grid',
             gridTemplateColumns: '1fr 520px',
-            gridTemplateRows: 'auto 1fr 190px',
+            gridTemplateRows: 'auto 1fr auto 190px',
             gap: 2,
             padding: pip.sp3,
             background: pip.bgDeep,
@@ -524,6 +530,7 @@ export function RaijinRecs() {
             />
             <RaijinHeroDisplay heroData={heroData} recommendations={visibleRecs} />
             <RaijinStrategy recommendations={visibleRecs} />
+            <RaijinStanceBanner stance={heroData ? stance : null} />
             <RaijinActionBar
                 recommendations={visibleRecs}
                 heroData={heroData}

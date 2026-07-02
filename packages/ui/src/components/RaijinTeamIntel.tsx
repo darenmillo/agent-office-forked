@@ -448,6 +448,8 @@ function EnemySourceBadge({
     onClick?: () => void;
 }) {
     const config: Record<EnemySource, { label: string; color: string; clickable: boolean }> = {
+        minimap: { label: 'ENEMIES: MINIMAP \u2713', color: pip.green, clickable: false },
+        capture: { label: 'ENEMIES: CAPTURE \u2713', color: pip.green, clickable: false },
         gsi_draft: { label: 'ENEMIES: GSI DRAFT \u2713', color: pip.amberBright, clickable: false },
         bot: { label: 'ENEMIES: BOT \u2713', color: pip.green, clickable: false },
         manual: { label: 'ENEMIES: MANUAL', color: pip.amber, clickable: true },
