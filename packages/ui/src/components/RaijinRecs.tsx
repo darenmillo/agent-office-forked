@@ -21,7 +21,8 @@ import { RaijinSettings } from './RaijinSettings';
 import { RaijinPostGame } from './RaijinPostGame';
 import { RaijinHistory } from './RaijinHistory';
 import { RaijinStanceBanner } from './RaijinStanceBanner';
-import type { PostGameReport, RecUrgency, StanceData } from '../raijinTypes';
+import { RaijinTimerRail } from './RaijinTimerRail';
+import type { PostGameReport, RecUrgency, StanceData, TimerRailData } from '../raijinTypes';
 
 const OFFICE_API = 'http://localhost:3000';
 
@@ -49,6 +50,10 @@ export function RaijinRecs() {
     const [postGameReport, setPostGameReport] = useState<PostGameReport | null>(null);
     // v6 Phase 3: FARM/FIGHT/PUSH stance banner
     const [stance, setStance] = useState<StanceData | null>(null);
+    // v6 Phase 12: timer rail + bracket badge + MMR trend
+    const [timerRail, setTimerRail] = useState<{ data: TimerRailData; receivedAt: number } | null>(null);
+    const [bracket, setBracket] = useState<string | null>(null);
+    const [mmrTrend, setMmrTrend] = useState<string | null>(null);
     // v6 Phase 4: patch staleness (engine knowledge base vs live Valve patch)
     const [patchStatus, setPatchStatus] = useState<{
         engine_version: string; live_version: string; stale: boolean;
@@ -86,6 +91,9 @@ export function RaijinRecs() {
             if (!resp.ok) return;
             const data: BotStatus = await resp.json();
             setEnemySource(data.enemy_source ?? 'none');
+            // v6 Phase 12: auto-detected bracket rides on bot-status
+            const b = (data as unknown as { bracket?: string | null }).bracket;
+            if (b) setBracket(b);
         } catch {
             // backend not reachable; leave state as-is
         }
@@ -177,12 +185,20 @@ export function RaijinRecs() {
                     setEnemyIntel(update.data as unknown as EnemyIntelData);
                 } else if (update.type === 'stance') {
                     setStance(update.data as unknown as StanceData);
+                } else if (update.type === 'timers') {
+                    setTimerRail({ data: update.data as unknown as TimerRailData, receivedAt: Date.now() });
                 } else if (update.type === 'game_ended') {
                     setHeroData(null);
                     setEnemyIntel(null);
                     setRecommendations([]);
                     setEnemySource('none');
                     setStance(null);
+                    setTimerRail(null);
+                    // refresh the MMR trend after each game (ledger just appended)
+                    fetch(`${RAIJIN_API}/api/mmr`)
+                        .then(r => (r.ok ? r.json() : null))
+                        .then(d => { if (d?.trend) setMmrTrend(d.trend); })
+                        .catch(() => { /* engine offline */ });
                     pickerAutoOpenedRef.current = false;
                     // Phase 4: fetch the latest post-game report and surface it
                     fetch(`${RAIJIN_API}/api/post-game/latest`)
@@ -351,7 +367,7 @@ export function RaijinRecs() {
             position: 'absolute', top: 0, left: 56, right: 0, bottom: 0,
             display: 'grid',
             gridTemplateColumns: '1fr 520px',
-            gridTemplateRows: 'auto 1fr auto 190px',
+            gridTemplateRows: 'auto 1fr auto auto 190px',
             gap: 2,
             padding: pip.sp3,
             background: pip.bgDeep,
@@ -430,6 +446,22 @@ export function RaijinRecs() {
                 fontFamily: pip.font,
                 display: 'flex', alignItems: 'center', gap: pip.sp3,
             }}>
+                {/* v6 Phase 12: auto-detected bracket + MMR trend chips */}
+                {bracket && (
+                    <span
+                        title={mmrTrend ?? 'MMR trend appears after the first tracked game'}
+                        style={{
+                            border: `1px solid ${pip.amberFaint}`,
+                            color: pip.amberDim,
+                            padding: '4px 10px',
+                            fontSize: pip.textXs,
+                            letterSpacing: 1,
+                            textTransform: 'uppercase',
+                        }}
+                    >
+                        {bracket}{mmrTrend ? ` · ${mmrTrend.split(';')[0]}` : ''}
+                    </span>
+                )}
                 {/* v4.1.1: persistent reach-in to the last post-game report.
                     Previously the only way to re-open a dismissed report was
                     Alt+Y → click the top history row, which isn't obvious. */}
@@ -562,6 +594,10 @@ export function RaijinRecs() {
             <RaijinHeroDisplay heroData={heroData} recommendations={visibleRecs} />
             <RaijinStrategy recommendations={visibleRecs} />
             <RaijinStanceBanner stance={heroData ? stance : null} />
+            <RaijinTimerRail
+                rail={heroData && timerRail ? timerRail.data : null}
+                receivedAt={timerRail?.receivedAt ?? null}
+            />
             <RaijinActionBar
                 recommendations={visibleRecs}
                 heroData={heroData}

@@ -106,6 +106,18 @@ export interface StanceData {
     inputs?: Record<string, unknown>;
 }
 
+/** v6: timer-rail snapshot (absolute game-clock values; UI extrapolates). */
+export interface TimerRailData {
+    clock: number;
+    next_stack?: number;
+    next_power_rune?: number;
+    next_bounty?: number;
+    next_shrine?: { at: number; xp: number };
+    tormentor?: { status: 'pending' | 'respawning' | 'up'; at: number | null };
+    roshan?: { status: 'unknown' | 'dead' | 'window' | 'up'; early: number | null; late: number | null };
+    aegis?: { expires_at: number };
+}
+
 /** Per-player data from GC Bot GetRealtimeStats (~2 min delayed). */
 export interface EnemyPlayerData {
     hero_id: number;

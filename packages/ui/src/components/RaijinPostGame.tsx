@@ -146,6 +146,9 @@ export function RaijinPostGame({ report, onDismiss, onViewHistory }: Props) {
                     matchId={report.match_id}
                 />
 
+                {/* v6 Phase 12: per-phase analysis + fight judgments + next-game focus */}
+                <PhaseAnalysisSection matchId={report.match_id} />
+
 
                 {/* Key moments */}
                 {report.key_moments.length > 0 && (
@@ -463,6 +466,133 @@ function GradeCard({ grade }: { grade: DimensionGrade }) {
             }}>
                 {grade.callout}
             </div>
+        </div>
+    );
+}
+
+/* ── v6 Phase 12: per-phase analysis (Stratz-parsed, Opus-narrated) ── */
+
+const VERDICT_COLOR: Record<string, string> = {
+    good_join: pip.green,
+    good_skip: pip.green,
+    bad_join: pip.red,
+    bad_skip: pip.red,
+};
+
+interface PhaseNarrative {
+    summary?: string;
+    phases?: { phase: string; went_well?: string[]; mistakes?: string[] }[];
+    fight_judgments?: { minute: number; joined: boolean; verdict: string; note: string }[];
+    next_game_focus?: string[];
+}
+
+function PhaseAnalysisSection({ matchId }: { matchId: string }) {
+    const [narrative, setNarrative] = useState<PhaseNarrative | null>(null);
+    const [tried, setTried] = useState(false);
+
+    useEffect(() => {
+        let cancelled = false;
+        setNarrative(null);
+        setTried(false);
+        // The analysis lands 2-10 min after game end (Stratz parse lag) —
+        // poll a few times with a widening delay.
+        const delays = [0, 30000, 120000, 300000];
+        delays.forEach(delay => {
+            setTimeout(async () => {
+                if (cancelled) return;
+                try {
+                    const r = await fetch(`${RAIJIN_API}/api/post-game/analysis/${matchId}`);
+                    if (r.ok) {
+                        const data = await r.json();
+                        if (!cancelled && data?.narrative) setNarrative(data.narrative);
+                    }
+                } catch { /* engine offline */ }
+                if (!cancelled) setTried(true);
+            }, delay);
+        });
+        return () => { cancelled = true; };
+    }, [matchId]);
+
+    if (!narrative) {
+        return tried ? null : (
+            <div style={{ fontSize: pip.textXs, color: pip.amberFaint, marginBottom: pip.sp3 }}>
+                phase analysis pending (replay parse)…
+            </div>
+        );
+    }
+
+    const sectionTitle = (text: string) => (
+        <div style={{
+            fontSize: pip.textSm, color: pip.amber, letterSpacing: 1,
+            textTransform: 'uppercase', marginBottom: pip.sp2,
+            borderBottom: `1px solid ${pip.amberGhost}`, paddingBottom: pip.sp1,
+        }}>{text}</div>
+    );
+
+    return (
+        <div style={{ marginBottom: pip.sp4 }}>
+            {sectionTitle('PHASE ANALYSIS')}
+            {narrative.summary && (
+                <div style={{ fontSize: pip.textSm, color: pip.amberBright, marginBottom: pip.sp3 }}>
+                    {narrative.summary}
+                </div>
+            )}
+            <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+                gap: pip.sp3,
+                marginBottom: pip.sp3,
+            }}>
+                {(narrative.phases ?? []).map(ph => (
+                    <div key={ph.phase} style={{
+                        border: `1px solid ${pip.amberFaint}`, background: pip.bgInset,
+                        padding: pip.sp3,
+                    }}>
+                        <div style={{
+                            fontSize: pip.textXs, color: pip.amberDim,
+                            letterSpacing: 1, textTransform: 'uppercase', marginBottom: pip.sp1,
+                        }}>{ph.phase.replace('_', ' ')}</div>
+                        {(ph.went_well ?? []).map((w, i) => (
+                            <div key={`w${i}`} style={{ fontSize: pip.textXs, color: pip.green, marginBottom: 2 }}>
+                                + {w}
+                            </div>
+                        ))}
+                        {(ph.mistakes ?? []).map((m, i) => (
+                            <div key={`m${i}`} style={{ fontSize: pip.textXs, color: pip.red, marginBottom: 2 }}>
+                                − {m}
+                            </div>
+                        ))}
+                    </div>
+                ))}
+            </div>
+            {(narrative.fight_judgments ?? []).length > 0 && (
+                <div style={{ marginBottom: pip.sp3 }}>
+                    {(narrative.fight_judgments ?? []).map((f, i) => (
+                        <div key={i} style={{ fontSize: pip.textXs, marginBottom: 3 }}>
+                            <span style={{ color: pip.amberDim }}>{f.minute}:00 </span>
+                            <span style={{ color: VERDICT_COLOR[f.verdict] ?? pip.amber, fontWeight: 700 }}>
+                                {f.verdict.replace('_', ' ').toUpperCase()}
+                            </span>
+                            <span style={{ color: pip.amberBright }}> — {f.note}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
+            {(narrative.next_game_focus ?? []).length > 0 && (
+                <div style={{
+                    border: `1px solid ${pip.amber}`, background: pip.bgInset, padding: pip.sp3,
+                }}>
+                    <div style={{
+                        fontSize: pip.textXs, color: pip.amber, letterSpacing: 1,
+                        textTransform: 'uppercase', marginBottom: pip.sp1,
+                    }}>NEXT GAME FOCUS</div>
+                    {(narrative.next_game_focus ?? []).map((f, i) => (
+                        <div key={i} style={{ fontSize: pip.textXs, color: pip.amberBright, marginBottom: 2 }}>
+                            • {f}
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }

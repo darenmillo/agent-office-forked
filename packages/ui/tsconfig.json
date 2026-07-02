@@ -5,7 +5,9 @@
         "rootDir": "./src",
         "jsx": "react",
         "experimentalDecorators": true,
-        "useDefineForClassFields": false
+        "useDefineForClassFields": false,
+        "module": "es2020",
+        "moduleResolution": "bundler"
     },
     "include": [
         "src/**/*"
