@@ -1,19 +1,17 @@
-/** RaijinDeathPanel — CRITICAL coaching card shown during the respawn window.
+/** DeathMoment v2 (Phase 1, #7) — ONE death surface.
  *
- * Content scoped to data that actually exists (per audit decision — GSI and
- * GetRealtimeStats do NOT provide per-death damage source breakdowns):
- *   - Respawn timer countdown
- *   - Gold to spend before respawn
- *   - The most recent CRITICAL / IMPORTANT rec with the 'death' tag (async LLM
- *     tip arrives here via the normal recommendations stream)
- *   - Flushed deferred rec titles from the Phase 1b buffer
+ * Consolidates the previously fragmented death artifacts into a single
+ * broadcast-language card: respawn numeral (60px), gold-to-spend, and the
+ * single coaching WHY (the Sonnet "coach says" analysis) as the hero line.
+ * The compact alive-state "last death" card + its 45s persistence and manual
+ * dismiss are preserved — that interaction was verified good.
  *
- * Visible only when `heroData.alive === false`. Auto-hides on respawn.
- * All animations respect prefers-reduced-motion.
+ * Data scope unchanged (per audit): GSI provides respawn/gold; the analysis
+ * arrives as a death-tagged rec via the normal recommendations stream.
  */
 import React, { useMemo, useState, useEffect } from 'react';
 import { HeroData, Recommendation, effectiveUrgency } from '../raijinTypes';
-import { pip, glow, glowText } from '../raijinTheme';
+import { bcast, bLabel, bNum } from '../raijinTheme';
 
 interface Props {
     heroData: HeroData | null;
@@ -21,9 +19,8 @@ interface Props {
 }
 
 export function RaijinDeathPanel({ heroData, recommendations }: Props) {
-    // Phase 5c: find the Sonnet "Coach says" rec separately from the sync
-    // _on_death bundle so we can render it in a dedicated card and keep it
-    // visible past the respawn timer.
+    // Find the Sonnet "coach says" rec separately from the sync _on_death
+    // bundle so it renders as the hero line and persists past respawn.
     const { headline, extras, coachSays } = useMemo(() => {
         const allDeathTagged = recommendations.filter(r => r.tags?.includes('death'));
         const sorted = [...allDeathTagged].sort(
@@ -40,19 +37,16 @@ export function RaijinDeathPanel({ heroData, recommendations }: Props) {
             .filter(r => !r.tags?.includes('death'))
             .filter(r => now - (r.receivedAt ?? now) < 10_000)
             .filter(r => effectiveUrgency(r) !== 'CRITICAL')
-            .slice(0, 5);
+            .slice(0, 4);
         return { headline: headlineRec, extras: recentFlushed, coachSays: analysis };
     }, [recommendations]);
 
     const alive = heroData?.alive ?? true;
     // Coach says persists for 45s after arrival so it stays visible past a
-    // quick Crusader respawn (10–16s).
+    // quick respawn (10–16s).
     const coachSaysFresh = coachSays
         && (Date.now() - (coachSays.receivedAt ?? 0)) < 45_000;
 
-    // Manual dismiss for the alive+persisted Coach Says state. User clicks ×
-    // to kill the card before the 45s auto-expire. Reset on new death so the
-    // next cycle's Coach Says isn't pre-dismissed.
     const [dismissedCoachSaysId, setDismissedCoachSaysId] = useState<number | null>(null);
     useEffect(() => {
         if (!alive) setDismissedCoachSaysId(null);
@@ -61,7 +55,6 @@ export function RaijinDeathPanel({ heroData, recommendations }: Props) {
         && dismissedCoachSaysId === (coachSays.receivedAt ?? 0);
 
     if (!heroData) return null;
-    // Skip if alive AND (no fresh coach-says OR user dismissed it)
     if (alive && (!coachSaysFresh || dismissed)) return null;
 
     const gold = heroData.gold ?? 0;
@@ -70,215 +63,165 @@ export function RaijinDeathPanel({ heroData, recommendations }: Props) {
     return (
         <>
             <style>{`
-                @keyframes raijin-death-pulse {
-                    0%, 100% {
-                        border-color: ${pip.red};
-                        box-shadow: ${glow(pip.red, 12)};
-                    }
-                    50% {
-                        border-color: ${pip.amberBright};
-                        box-shadow: ${glow(pip.red, 24)};
-                    }
-                }
-                .raijin-death-panel {
-                    animation: raijin-death-pulse 2s ease-in-out infinite;
+                @keyframes raijin-death-rise {
+                    from { opacity: 0; transform: translate(-50%, 10px); }
+                    to { opacity: 1; transform: translate(-50%, 0); }
                 }
                 @media (prefers-reduced-motion: reduce) {
-                    .raijin-death-panel {
-                        animation: none;
-                    }
+                    .raijin-death-moment { animation: none !important; }
                 }
             `}</style>
-            <div
-                className={alive ? 'raijin-death-panel-compact' : 'raijin-death-panel'}
+            <section
+                className="raijin-death-moment"
                 role="region"
                 aria-label={alive ? 'Coach says — last death' : 'Death coaching panel'}
                 style={
                     alive
-                        // Alive: pin compact to top-right so it doesn't cover
-                        // the minimap/live action. Narrower; mirrors toast sizing.
+                        // Alive: compact top-right card — mirrors toast sizing.
                         ? {
                             position: 'absolute',
                             top: 60,
                             right: 24,
-                            width: 'min(360px, 30vw)',
-                            padding: pip.sp3,
-                            background: pip.bgPanel,
-                            border: `2px solid ${pip.amber}`,
-                            boxShadow: glow(pip.amber, 6),
-                            fontFamily: pip.font,
-                            color: pip.amber,
+                            width: 'min(380px, 32vw)',
+                            padding: 14,
+                            background: bcast.panel,
+                            border: `1px solid ${bcast.line}`,
+                            borderLeft: `3px solid ${bcast.gold}`,
+                            borderRadius: bcast.r,
+                            fontFamily: bcast.body,
+                            color: bcast.ink,
                             zIndex: 15,
+                            boxShadow: '0 12px 40px rgba(0,0,0,.45)',
                         }
                         : {
                             position: 'absolute',
                             top: 110,
                             left: '50%',
                             transform: 'translateX(-50%)',
-                            width: 'min(540px, 40vw)',
-                            padding: pip.sp4,
-                            background: pip.bgPanel,
-                            border: `3px solid ${pip.red}`,
-                            boxShadow: glow(pip.red, 16),
-                            fontFamily: pip.font,
-                            color: pip.amber,
+                            width: 'min(560px, 44vw)',
+                            padding: '18px 20px',
+                            background: `radial-gradient(400px 160px at 12% 0%, rgba(255,89,100,.12), transparent 70%), ${bcast.panel}`,
+                            border: `1px solid ${bcast.dire}66`,
+                            borderLeft: `4px solid ${bcast.dire}`,
+                            borderRadius: bcast.r,
+                            fontFamily: bcast.body,
+                            color: bcast.ink,
                             zIndex: 15,
+                            boxShadow: '0 18px 60px rgba(0,0,0,.55)',
+                            animation: `raijin-death-rise .3s ${bcast.ease} both`,
                         }
                 }
             >
-                {/* Header — differs by state */}
                 {!alive ? (
                     <>
-                        <div style={{
-                            fontSize: pip.text2xl,
-                            fontWeight: 700,
-                            color: pip.red,
-                            letterSpacing: 2,
-                            textShadow: glowText(pip.red, 8),
-                            textAlign: 'center',
-                            marginBottom: pip.sp3,
-                        }}>
-                            DEAD — RESPAWN {respawn}s
+                        {/* Respawn numeral + gold — the two numbers that matter while dead */}
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 20 }}>
+                            <div>
+                                <div style={{ ...bLabel, color: bcast.dire }}>Respawn</div>
+                                <div style={{
+                                    ...bNum,
+                                    fontFamily: bcast.display,
+                                    fontSize: bcast.tNumeral,
+                                    fontWeight: 700,
+                                    lineHeight: 1,
+                                    color: bcast.dire,
+                                }}>
+                                    {respawn}s
+                                </div>
+                            </div>
+                            <div>
+                                <div style={bLabel}>Gold to spend NOW</div>
+                                <div style={{
+                                    ...bNum,
+                                    fontFamily: bcast.display,
+                                    fontSize: 34,
+                                    fontWeight: 700,
+                                    lineHeight: 1.1,
+                                    color: bcast.gold,
+                                }}>
+                                    {gold}g
+                                </div>
+                            </div>
                         </div>
-                        <div style={{
-                            fontSize: pip.textLg,
-                            color: pip.amber,
-                            textAlign: 'center',
-                            marginBottom: pip.sp3,
-                            textShadow: glowText(pip.amber, 4),
-                        }}>
-                            SPEND YOUR {gold}g BEFORE RESPAWNING
-                        </div>
-                    </>
-                ) : (
-                    <div style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: pip.sp2,
-                        marginBottom: pip.sp2,
-                    }}>
-                        <span style={{
-                            fontSize: pip.textBase,
-                            fontWeight: 700,
-                            color: pip.amber,
-                            letterSpacing: 1,
-                            textShadow: glowText(pip.amber, 4),
-                            flex: 1,
-                        }}>
-                            COACH SAYS — LAST DEATH
-                        </span>
-                        <button
-                            onClick={() =>
-                                setDismissedCoachSaysId(coachSays?.receivedAt ?? 0)
-                            }
-                            aria-label="Dismiss coach says"
-                            title="Dismiss"
-                            style={{
-                                background: 'transparent',
-                                border: `1px solid ${pip.amberFaint}`,
-                                color: pip.amber,
-                                width: 24,
-                                height: 24,
-                                fontFamily: pip.font,
-                                fontSize: pip.textSm,
-                                cursor: 'pointer',
-                                lineHeight: 1,
-                                padding: 0,
-                            }}
-                        >
-                            ×
-                        </button>
-                    </div>
-                )}
 
-                {/* Phase 5c Sonnet "Coach says" — pinned above the sync headline */}
-                {coachSays && (
-                    <div
-                        className="raijin-coach-says"
-                        style={{
-                            borderLeft: `3px solid ${pip.amberBright}`,
-                            padding: `${pip.sp2}px ${pip.sp3}px`,
-                            marginBottom: pip.sp3,
-                            background: pip.bgInset,
-                        }}>
-                        {/* Only show the "COACH SAYS" micro-label when we're
-                            still in the dead state — the compact alive panel
-                            already has "COACH SAYS — LAST DEATH" as its header. */}
-                        {!alive && (
-                            <div style={{
-                                fontSize: pip.textXs,
-                                letterSpacing: 1,
-                                color: pip.amberDim,  // WCAG AA: ~4.7:1 on bgInset
-                                marginBottom: pip.sp1,
-                                textTransform: 'uppercase',
+                        {/* THE coaching why — hero line */}
+                        {coachSays && (
+                            <p style={{
+                                margin: '14px 0 0',
+                                fontSize: bcast.tRec,
+                                lineHeight: 1.45,
+                                color: bcast.ink,
+                                whiteSpace: 'pre-wrap',
                             }}>
-                                Coach says
+                                <span style={{ color: bcast.goldDim, fontWeight: 600 }}>Change this: </span>
+                                {coachSays.body}
+                            </p>
+                        )}
+
+                        {!coachSays && headline && (
+                            <p style={{
+                                margin: '14px 0 0',
+                                fontSize: bcast.tRec,
+                                lineHeight: 1.45,
+                                color: bcast.ink,
+                            }}>
+                                <b>{headline.title}</b>
+                                {headline.body ? ` — ${headline.body}` : ''}
+                            </p>
+                        )}
+
+                        {extras.length > 0 && (
+                            <div style={{ marginTop: 12, borderTop: `1px solid ${bcast.line}`, paddingTop: 10 }}>
+                                <div style={{ ...bLabel, fontSize: 11, marginBottom: 4 }}>Queued during the fight</div>
+                                {extras.map((rec, i) => (
+                                    <div key={i} style={{ fontSize: bcast.tSub, color: bcast.muted, lineHeight: 1.45 }}>
+                                        • {rec.title}
+                                    </div>
+                                ))}
                             </div>
                         )}
-                        <div style={{
-                            fontSize: pip.textBase,
-                            color: pip.amber,
-                            lineHeight: 1.5,
-                            whiteSpace: 'pre-wrap',
-                        }}>
-                            {coachSays.body}
-                        </div>
-                    </div>
-                )}
-
-                {/* Only render the sync bundle while actually dead */}
-                {!alive && headline && (
-                    <div style={{
-                        borderLeft: `3px solid ${pip.red}`,
-                        padding: `${pip.sp2}px ${pip.sp3}px`,
-                        marginTop: pip.sp3,
-                        background: pip.bgInset,
-                    }}>
-                        <div style={{
-                            fontSize: pip.textBase,
-                            fontWeight: 700,
-                            color: pip.amber,
-                            marginBottom: pip.sp1,
-                        }}>
-                            {headline.title}
-                        </div>
-                        <div style={{
-                            fontSize: pip.textBase,
-                            color: pip.amber,
-                            lineHeight: 1.5,
-                        }}>
-                            {headline.body}
-                        </div>
-                    </div>
-                )}
-
-                {!alive && extras.length > 0 && (
-                    <div style={{ marginTop: pip.sp3 }}>
-                        <div style={{
-                            fontSize: pip.textXs,
-                            color: pip.amberDim,
-                            letterSpacing: 1,
-                            marginBottom: pip.sp1,
-                            textTransform: 'uppercase',
-                        }}>
-                            Queued during the fight:
-                        </div>
-                        {extras.map((rec, i) => (
-                            <div
-                                key={i}
+                    </>
+                ) : (
+                    <>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                            <span style={{ ...bLabel, color: bcast.gold, flex: 1 }}>
+                                Coach says — last death
+                            </span>
+                            <button
+                                onClick={() => setDismissedCoachSaysId(coachSays?.receivedAt ?? 0)}
+                                aria-label="Dismiss coach says"
+                                title="Dismiss"
                                 style={{
-                                    fontSize: pip.textSm,
-                                    color: pip.amber,
-                                    lineHeight: 1.4,
-                                    marginBottom: 2,
+                                    background: 'transparent',
+                                    border: `1px solid ${bcast.line}`,
+                                    borderRadius: 6,
+                                    color: bcast.muted,
+                                    width: 24,
+                                    height: 24,
+                                    fontFamily: bcast.body,
+                                    fontSize: 13,
+                                    cursor: 'pointer',
+                                    lineHeight: 1,
+                                    padding: 0,
                                 }}
                             >
-                                {'\u2022 '} {rec.title}
-                            </div>
-                        ))}
-                    </div>
+                                ×
+                            </button>
+                        </div>
+                        {coachSays && (
+                            <p style={{
+                                margin: 0,
+                                fontSize: bcast.tBody,
+                                lineHeight: 1.5,
+                                color: bcast.ink,
+                                whiteSpace: 'pre-wrap',
+                            }}>
+                                {coachSays.body}
+                            </p>
+                        )}
+                    </>
                 )}
-            </div>
+            </section>
         </>
     );
 }
