@@ -23,6 +23,7 @@ import { RaijinPostGame } from './RaijinPostGame';
 import { RaijinHistory } from './RaijinHistory';
 import { RaijinStanceBanner } from './RaijinStanceBanner';
 import { RaijinTimerRail } from './RaijinTimerRail';
+import { RaijinBriefingRoom } from './RaijinBriefingRoom';
 import type { PostGameReport, RecUrgency, StanceData, TimerRailData } from '../raijinTypes';
 
 const OFFICE_API = 'http://localhost:3000';
@@ -561,6 +562,12 @@ export function RaijinRecs() {
                     onSourceClick={() => setPickerOpen(true)}
                 />
             </div>
+
+            {/* Phase 1 (#8): queue-time briefing — replaces the dead pre-game wall */}
+            <RaijinBriefingRoom
+                visible={serverStatus === 'ready' && !heroData && !gameEnded}
+                onOpenScouting={() => setScoutingOpen(true)}
+            />
 
             {/* Row 2 col 1: THE priority action (centerpiece) */}
             <div style={{ gridColumn: 1, display: 'grid' }}>
