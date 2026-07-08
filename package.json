@@ -10,7 +10,8 @@
     "test": "npm run test --workspaces --if-present",
     "lint": "eslint . --ext .ts,.tsx",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
-    "dev": "npm run dev --workspaces --if-present"
+    "dev": "npm run dev --workspaces --if-present",
+    "overlay": "npm run start --workspace=@agent-office/overlay"
   },
   "devDependencies": {
     "typescript": "^5.4.2",

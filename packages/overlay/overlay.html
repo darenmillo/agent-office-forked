@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Raijin — caster bug</title>
+<style>
+  /* Direction B palette + C stance model (source: packages/ui/src/raijinTheme.ts bcast). */
+  :root { --stance: #8A94A6; }
+  html, body { margin: 0; background: transparent; overflow: hidden; user-select: none; }
+  #strip {
+    box-sizing: border-box;
+    width: 740px; height: 76px; margin: 6px auto 0;
+    display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 16px;
+    padding: 10px 18px 10px 14px;
+    background: rgba(11, 14, 18, 0.78);
+    border: 1px solid rgba(44, 51, 61, 0.9);
+    border-left: 4px solid var(--stance);
+    border-radius: 12px;
+    box-shadow: 0 0 24px -6px var(--stance), 0 8px 24px rgba(0, 0, 0, 0.45);
+    font-family: Bahnschrift, 'Segoe UI', system-ui, sans-serif;
+    color: #E6EAF0;
+    transition: border-color 220ms cubic-bezier(.2,.7,.3,1), box-shadow 220ms;
+  }
+  .left { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 84px; }
+  #dot { width: 8px; height: 8px; border-radius: 50%; background: #3BE0A0; }
+  #strip.offline #dot { background: #5C6675; }
+  #stance {
+    font-size: 22px; font-weight: 700; letter-spacing: .1em; color: var(--stance);
+    font-variant-numeric: tabular-nums;
+  }
+  .mid { min-width: 0; }
+  #directive {
+    font-size: 24px; font-weight: 700; line-height: 1.1;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #why {
+    font-size: 17px; color: #B9C2CF; line-height: 1.25; margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  #timer {
+    font-size: 20px; font-weight: 700; color: #5AA9FF;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  #strip.offline { opacity: .6; }
+  #strip.critical {
+    border-color: #FF5964; border-left-color: #FF5964;
+    animation: flash 900ms ease-in-out infinite;
+  }
+  @keyframes flash {
+    0%, 100% { box-shadow: 0 0 24px -6px #FF5964, 0 8px 24px rgba(0,0,0,.45); }
+    50% { box-shadow: 0 0 42px 0 #FF5964, 0 8px 24px rgba(0,0,0,.45); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #strip.critical { animation: none; box-shadow: 0 0 32px -4px #FF5964, 0 8px 24px rgba(0,0,0,.45); }
+    #strip { transition: none; }
+  }
+</style>
+</head>
+<body>
+  <div id="strip" class="offline" aria-live="polite">
+    <div class="left">
+      <span id="dot"></span>
+      <span id="stance"></span>
+    </div>
+    <div class="mid">
+      <div id="directive">RAIJIN OFFLINE</div>
+      <div id="why">waiting for the engine on :4000</div>
+    </div>
+    <div id="timer"></div>
+  </div>
+  <script>require('./dist/renderer.js');</script>
+</body>
+</html>
