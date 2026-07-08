@@ -1,9 +1,9 @@
-/** v6 Phase 12: timer rail — stack window, runes, wisdom shrine (+XP),
- *  Tormentor, Roshan window, aegis. Server sends absolute clock values every
- *  ~5s (TIMERS updates); this renders live countdowns client-side by
- *  extrapolating the game clock from the receive timestamp. */
+/** Timer rail v2 — broadcast chips with tabular numerals. Server sends
+ *  absolute clock values every ~5s (TIMERS updates); this renders live
+ *  countdowns client-side by extrapolating the game clock from the receive
+ *  timestamp. Gold = imminent (<60s), radiant = up/ready, dire = Rosh window. */
 import React, { useEffect, useState } from 'react';
-import { pip } from '../raijinTheme';
+import { bcast, bNum } from '../raijinTheme';
 import type { TimerRailData } from '../raijinTypes';
 
 interface Props {
@@ -18,31 +18,44 @@ function fmt(sec: number): string {
     return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-function Chip({ label, value, hot }: { label: string; value: string; hot?: boolean }) {
+function Chip({ label, value, tone = 'neutral' }: {
+    label: string; value: string; tone?: 'neutral' | 'soon' | 'up' | 'hot';
+}) {
+    const valueColor = tone === 'hot' ? bcast.dire
+        : tone === 'soon' ? bcast.gold
+        : tone === 'up' ? bcast.radiant
+        : bcast.ink;
     return (
         <div
             style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                padding: `${pip.sp1}px ${pip.sp3}px`,
-                border: `1px solid ${hot ? pip.red : pip.amberFaint}`,
-                background: pip.bgInset,
-                minWidth: 74,
+                flex: '1 1 0',
+                minWidth: 96,
+                background: bcast.panel,
+                border: `1px solid ${tone === 'hot' ? `${bcast.dire}66` : bcast.line}`,
+                borderRadius: bcast.rSm,
+                padding: '9px 12px',
+                fontFamily: bcast.body,
             }}
         >
-            <span style={{ fontSize: pip.textXs, color: pip.amberDim, letterSpacing: 1 }}>
+            <div style={{
+                fontSize: 11,
+                letterSpacing: '.1em',
+                textTransform: 'uppercase',
+                color: bcast.muted,
+                fontWeight: 600,
+            }}>
                 {label}
-            </span>
-            <span
-                style={{
-                    fontSize: pip.textSm,
-                    fontWeight: 700,
-                    color: hot ? pip.red : pip.amberBright,
-                }}
-            >
+            </div>
+            <div style={{
+                ...bNum,
+                fontFamily: bcast.display,
+                fontSize: 24,
+                fontWeight: 700,
+                marginTop: 2,
+                color: valueColor,
+            }}>
                 {value}
-            </span>
+            </div>
         </div>
     );
 }
@@ -60,23 +73,25 @@ export function RaijinTimerRail({ rail, receivedAt }: Props) {
     // Extrapolated current game clock (server ticks ~1Hz; drift is bounded by
     // the ~5s TIMERS refresh)
     const clock = rail.clock + Math.floor((Date.now() - receivedAt) / 1000);
+    const soon = (at: number) => (at - clock < 60 ? 'soon' : 'neutral') as 'soon' | 'neutral';
     const chips: React.ReactNode[] = [];
 
     if (rail.next_stack !== undefined) {
-        chips.push(<Chip key="stack" label="STACK" value={fmt(rail.next_stack - clock)} />);
+        chips.push(<Chip key="stack" label="Stack" value={fmt(rail.next_stack - clock)} tone={soon(rail.next_stack)} />);
     }
     if (rail.next_power_rune !== undefined) {
-        chips.push(<Chip key="rune" label="RUNE" value={fmt(rail.next_power_rune - clock)} />);
+        chips.push(<Chip key="rune" label="Power rune" value={fmt(rail.next_power_rune - clock)} tone={soon(rail.next_power_rune)} />);
     }
     if (rail.next_bounty !== undefined) {
-        chips.push(<Chip key="bounty" label="BOUNTY" value={fmt(rail.next_bounty - clock)} />);
+        chips.push(<Chip key="bounty" label="Bounty" value={fmt(rail.next_bounty - clock)} tone={soon(rail.next_bounty)} />);
     }
     if (rail.next_shrine) {
         chips.push(
             <Chip
                 key="shrine"
-                label={`SHRINE +${rail.next_shrine.xp}xp`}
+                label={`Shrine +${rail.next_shrine.xp}xp`}
                 value={fmt(rail.next_shrine.at - clock)}
+                tone={soon(rail.next_shrine.at)}
             />,
         );
     }
@@ -85,45 +100,43 @@ export function RaijinTimerRail({ rail, receivedAt }: Props) {
         chips.push(
             <Chip
                 key="torm"
-                label="TORM"
+                label="Tormentor"
                 value={
                     t.status === 'up' ? 'UP' : t.at !== null && t.at !== undefined
                         ? fmt(t.at - clock) : '—'
                 }
+                tone={t.status === 'up' ? 'up' : 'neutral'}
             />,
         );
     }
     if (rail.roshan) {
         const r = rail.roshan;
         let value = '?';
-        let hot = false;
+        let tone: 'neutral' | 'hot' | 'up' = 'neutral';
         if (r.status === 'window') {
             value = 'WINDOW';
-            hot = true;
+            tone = 'hot';
         } else if (r.status === 'dead' && r.early) {
             value = fmt(r.early - clock);
         } else if (r.status === 'up') {
             value = 'UP?';
+            tone = 'up';
         }
-        chips.push(<Chip key="rosh" label="ROSH" value={value} hot={hot} />);
+        chips.push(<Chip key="rosh" label="Roshan" value={value} tone={tone} />);
     }
     if (rail.aegis?.expires_at !== undefined) {
         const left = rail.aegis.expires_at - clock;
         if (left > 0) {
-            chips.push(<Chip key="aegis" label="AEGIS" value={fmt(left)} hot={left < 60} />);
+            chips.push(<Chip key="aegis" label="Aegis" value={fmt(left)} tone={left < 60 ? 'hot' : 'neutral'} />);
         }
     }
 
     if (!chips.length) return null;
     return (
         <div
-            style={{
-                gridColumn: '1 / -1',
-                display: 'flex',
-                gap: pip.sp2,
-                alignItems: 'stretch',
-                fontFamily: pip.font,
-            }}
+            role="list"
+            aria-label="Objective timers"
+            style={{ display: 'flex', gap: 8, alignItems: 'stretch', flexWrap: 'wrap' }}
         >
             {chips}
         </div>
