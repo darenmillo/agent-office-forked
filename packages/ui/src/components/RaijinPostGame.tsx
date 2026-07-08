@@ -332,7 +332,7 @@ function NarrativeBlock(props: {
                 flex: 1,
             }}>
                 {pendingRegen
-                    ? 'Regenerating narrative via Opus 4.7…'
+                    ? 'Regenerating narrative…'
                     : (regenError
                         ? `Narrative regen failed: ${regenError}`
                         : 'Narrative regenerating in the background…')}
@@ -514,9 +514,13 @@ function PhaseAnalysisSection({ matchId }: { matchId: string }) {
     }, [matchId]);
 
     if (!narrative) {
-        return tried ? null : (
-            <div style={{ fontSize: pip.textXs, color: pip.amberFaint, marginBottom: pip.sp3 }}>
-                phase analysis pending (replay parse)…
+        // Phase 1 (#11 bug c): an honest empty state instead of a silent
+        // blank — the user should know the analysis didn't land, not wonder.
+        return (
+            <div style={{ fontSize: pip.textSm, color: pip.amberDim, marginBottom: pip.sp3 }}>
+                {tried
+                    ? 'Phase analysis unavailable for this match (replay not parsed yet — reopen the report later).'
+                    : 'Phase analysis pending (replay parse, usually 2–10 min)…'}
             </div>
         );
     }
