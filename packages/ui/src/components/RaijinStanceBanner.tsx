@@ -1,69 +1,75 @@
-/** v6 Phase 3: FARM / FIGHT / PUSH stance banner — the one-glance answer to
- *  "what should I be doing right now". Rules decide server-side; this renders
- *  the decision + reason. FARM amber, FIGHT red pulse, PUSH green; discipline
- *  mode gets a hazard treatment (the "AFK farm your item" nudge). */
+/** StanceBanner v2 (Phase 1, #5) — the top-level strategic frame and the
+ *  template every WHY-first surface copies: stance word + reason + confidence
+ *  + discipline, in the Direction C stance-color model (the palette IS the
+ *  stance: FARM blue / FIGHT ember / PUSH gold). */
 import React from 'react';
-import { pip, glow, glowText } from '../raijinTheme';
+import { bcast, bLabel, bChip, bNum, stanceColor } from '../raijinTheme';
 import type { StanceData } from '../raijinTypes';
-
-const STANCE_COLOR: Record<string, string> = {
-    FARM: pip.amber,
-    FIGHT: pip.catFight,
-    PUSH: pip.green,
-};
 
 export function RaijinStanceBanner({ stance }: { stance: StanceData | null }) {
     if (!stance) return null;
-    const color = STANCE_COLOR[stance.stance] ?? pip.amber;
+    const color = stanceColor(stance.stance);
     const pulse = stance.stance === 'FIGHT' || stance.discipline;
+    const confidence = Number.isFinite(stance.confidence)
+        ? Math.round(stance.confidence * (stance.confidence <= 1 ? 100 : 1))
+        : null;
 
     return (
-        <div
+        <section
+            aria-label={`Current stance: ${stance.stance}`}
             style={{
-                gridColumn: '1 / -1',
-                display: 'flex',
-                alignItems: 'center',
-                gap: pip.sp4,
-                background: pip.bgPanel,
-                border: `2px solid ${color}`,
-                boxShadow: pulse ? glow(color, 10) : glow(color, 4),
-                padding: `${pip.sp2}px ${pip.sp4}px`,
-                fontFamily: pip.font,
-                animation: pulse ? 'raijin-stance-pulse 1.5s ease-in-out infinite' : undefined,
+                borderRadius: bcast.r,
+                padding: '14px 16px',
+                background: `linear-gradient(180deg, ${color}24, ${color}0d)`,
+                border: `1px solid ${color}59`,
+                fontFamily: bcast.body,
             }}
         >
             <style>{`
-                @keyframes raijin-stance-pulse {
-                    0%, 100% { box-shadow: 0 0 4px ${color}; }
-                    50% { box-shadow: 0 0 14px ${color}; }
+                @keyframes raijin-stance-breathe {
+                    0%, 100% { opacity: .55; }
+                    50% { opacity: 1; }
                 }
                 @media (prefers-reduced-motion: reduce) {
-                    [data-stance-banner] { animation: none !important; }
+                    .raijin-stance-dot { animation: none !important; }
                 }
             `}</style>
-            <div
-                data-stance-banner
-                style={{
-                    fontSize: pip.textXl,
-                    fontWeight: 700,
-                    letterSpacing: 4,
-                    color,
-                    textShadow: glowText(color, 6),
-                    minWidth: 110,
-                }}
-            >
-                {stance.discipline ? 'FARM ⚠' : stance.stance}
+            <div style={{ ...bLabel, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span
+                    className="raijin-stance-dot"
+                    style={{
+                        width: 8, height: 8, borderRadius: '50%', background: color,
+                        animation: pulse ? 'raijin-stance-breathe 1.6s ease-in-out infinite' : undefined,
+                    }}
+                />
+                Stance
             </div>
-            <div
-                style={{
-                    fontSize: pip.textBase,
-                    color: pip.amberBright,
-                    lineHeight: 1.35,
-                    flex: 1,
-                }}
-            >
+            <h3 style={{
+                fontFamily: bcast.display,
+                fontSize: bcast.tStance,
+                margin: '3px 0 5px',
+                color,
+                fontWeight: 700,
+                letterSpacing: '.02em',
+            }}>
+                {stance.stance}{stance.discipline ? ' · DISCIPLINE' : ''}
+            </h3>
+            <p style={{
+                margin: 0,
+                fontSize: bcast.tBody,
+                color: bcast.ink,
+                lineHeight: 1.42,
+            }}>
                 {stance.reason}
+            </p>
+            <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                {confidence !== null && (
+                    <span style={{ ...bChip, ...bNum }}>confidence {confidence}%</span>
+                )}
+                {stance.discipline && (
+                    <span style={{ ...bChip, color }}>AFK-farm your item — resist the fight</span>
+                )}
             </div>
-        </div>
+        </section>
     );
 }

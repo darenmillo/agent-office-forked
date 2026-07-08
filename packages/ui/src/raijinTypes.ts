@@ -152,7 +152,8 @@ export interface DimensionGrade {
     callout: string;
 }
 
-/** Opus 4.7-produced structured coaching narrative (Phase 5a). Three action cards + summary. */
+/** LLM-produced structured coaching narrative (Phase 5a; model is a backend
+ *  concern — don't bake model names into UI copy). Three action cards + summary. */
 export interface StructuredNarrative {
     summary: string;
     what_went_well: string[];

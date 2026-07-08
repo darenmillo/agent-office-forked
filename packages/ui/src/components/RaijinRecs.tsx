@@ -9,7 +9,8 @@ import {
     RAIJIN_API,
     RAIJIN_WS,
 } from '../raijinTypes';
-import { pip, scanlines, glowText, glow } from '../raijinTheme';
+import { bcast, bLabel, bNum } from '../raijinTheme';
+import { ingestRecs, visibleRecs, Role } from '../pacing';
 import { RaijinHeroDisplay } from './RaijinHeroDisplay';
 import { RaijinStrategy } from './RaijinStrategy';
 import { RaijinActionBar } from './RaijinActionBar';
@@ -22,12 +23,23 @@ import { RaijinPostGame } from './RaijinPostGame';
 import { RaijinHistory } from './RaijinHistory';
 import { RaijinStanceBanner } from './RaijinStanceBanner';
 import { RaijinTimerRail } from './RaijinTimerRail';
+import { RaijinBriefingRoom } from './RaijinBriefingRoom';
 import type { PostGameReport, RecUrgency, StanceData, TimerRailData } from '../raijinTypes';
 
 const OFFICE_API = 'http://localhost:3000';
+/** App.tsx sidebar is 48px — the old left:56 left an 8px dead gutter. */
+const SIDEBAR_W = 48;
 
 type ConnStatus = 'connected' | 'connecting' | 'disconnected';
 type ServerStatus = 'stopped' | 'starting' | 'running' | 'ready';
+
+const ROLES: Array<{ id: Role; label: string }> = [
+    { id: 'carry', label: 'CARRY' },
+    { id: 'mid', label: 'MID' },
+    { id: 'offlane', label: 'OFF' },
+    { id: 'soft_support', label: 'POS4' },
+    { id: 'hard_support', label: 'POS5' },
+];
 
 export function RaijinRecs() {
     const [heroData, setHeroData] = useState<HeroData | null>(null);
@@ -59,10 +71,27 @@ export function RaijinRecs() {
         engine_version: string; live_version: string; stale: boolean;
     } | null>(null);
     const [historyOpen, setHistoryOpen] = useState(false);
+    // Phase 1 (#9): role in UI state — reweights which surfaces lead. Persisted.
+    const [role, setRole] = useState<Role | null>(() => {
+        const saved = localStorage.getItem('raijin-role');
+        return ROLES.some(r => r.id === saved) ? (saved as Role) : null;
+    });
+    // Phase 1 (#11 bug d): game_ended freezes the board for review instead of
+    // blanking it. Cleared by the next live hero_status or an explicit dismiss.
+    const [gameEnded, setGameEnded] = useState(false);
+    const gameEndedRef = useRef(false);
+    const endedAtRef = useRef<number>(0);
+    useEffect(() => { gameEndedRef.current = gameEnded; }, [gameEnded]);
     // Web Audio playback context for TTS chunks — lazy-init on first use
     const audioCtxRef = useRef<AudioContext | null>(null);
     const wsRef = useRef<WebSocket | null>(null);
     const retryRef = useRef<number>(1000);
+
+    const pickRole = useCallback((r: Role | null) => {
+        setRole(r);
+        if (r) localStorage.setItem('raijin-role', r);
+        else localStorage.removeItem('raijin-role');
+    }, []);
 
     // Poll Raijin server status
     const checkServer = useCallback(async () => {
@@ -109,13 +138,13 @@ export function RaijinRecs() {
     // Auto-open the enemy picker when a hero is live but enemies are unknown.
     // Fires ONCE per game — tracked via pickerAutoOpenedRef which resets on game_ended.
     useEffect(() => {
-        if (!heroData) return;
+        if (!heroData || gameEnded) return;
         if (heroData.game_phase !== 'DOTA_GAMERULES_STATE_GAME_IN_PROGRESS') return;
         if (enemySource === 'none' && !pickerAutoOpenedRef.current) {
             pickerAutoOpenedRef.current = true;
             setPickerOpen(true);
         }
-    }, [heroData, enemySource]);
+    }, [heroData, enemySource, gameEnded]);
 
     const toggleServer = useCallback(async () => {
         if (serverStatus === 'ready' || serverStatus === 'starting') {
@@ -127,6 +156,16 @@ export function RaijinRecs() {
             await fetch(`${OFFICE_API}/api/raijin/start`, { method: 'POST' });
         }
     }, [serverStatus]);
+
+    /** Clear the frozen post-game board back to the idle state. */
+    const dismissFrozenBoard = useCallback(() => {
+        setGameEnded(false);
+        setHeroData(null);
+        setEnemyIntel(null);
+        setRecommendations([]);
+        setStance(null);
+        setTimerRail(null);
+    }, []);
 
     const connect = useCallback(() => {
         if (wsRef.current?.readyState === WebSocket.OPEN || wsRef.current?.readyState === WebSocket.CONNECTING) return;
@@ -144,42 +183,15 @@ export function RaijinRecs() {
                 const update: UIUpdate = JSON.parse(event.data);
 
                 if (update.type === 'hero_status') {
+                    setGameEnded(false); // live data un-freezes a reviewed board
                     setHeroData(update.data as unknown as HeroData);
                 } else if (update.type === 'recommendations') {
                     const newRecs = (update.data as any).recommendations as Recommendation[];
                     if (newRecs?.length) {
+                        // Phase 1 (#6): merge + displacement live in the
+                        // PacingController now — no title matching here.
                         const now = Date.now();
-                        const stamped = newRecs.map(r => ({ ...r, receivedAt: now }));
-                        setRecommendations(prev => {
-                            const newSkill = stamped.some(r => r.category === 'SKILL');
-                            const newItemPriorities = stamped
-                                .filter(r => r.category === 'ITEM')
-                                .map(r => r.priority);
-                            const minNewItemPrio = newItemPriorities.length
-                                ? Math.min(...newItemPriorities) : Infinity;
-
-                            // v4.1.4: when a new live-coaching "Raijin says" rec
-                            // arrives, drop any older live-coaching cards. Necro
-                            // match had 11 "Raijin says (trigger)" cards stacked
-                            // by end of game. Matchup ("<hero>: game plan…") and
-                            // death ("Coach says") LLM cards stay — they're
-                            // different voices with different titles.
-                            const newLiveLLM = stamped.some(r =>
-                                r.title.startsWith('Raijin says '),
-                            );
-
-                            const filtered = prev.filter(old => {
-                                if (old.category === 'SKILL' && newSkill) return false;
-                                if (old.category === 'ITEM' && old.priority < minNewItemPrio) return false;
-                                if (newLiveLLM && old.title.startsWith('Raijin says ')) {
-                                    return false;
-                                }
-                                return true;
-                            });
-
-                            const merged = [...stamped, ...filtered];
-                            return merged.slice(0, 50);
-                        });
+                        setRecommendations(prev => ingestRecs(prev, newRecs, now));
                     }
                 } else if (update.type === 'enemy_intel') {
                     setEnemyIntel(update.data as unknown as EnemyIntelData);
@@ -188,18 +200,17 @@ export function RaijinRecs() {
                 } else if (update.type === 'timers') {
                     setTimerRail({ data: update.data as unknown as TimerRailData, receivedAt: Date.now() });
                 } else if (update.type === 'game_ended') {
-                    setHeroData(null);
-                    setEnemyIntel(null);
-                    setRecommendations([]);
+                    // Phase 1 (#11 bug d): FREEZE the board for review — keep
+                    // hero panel, feed, and stance exactly as the game ended.
+                    setGameEnded(true);
+                    endedAtRef.current = Date.now();
                     setEnemySource('none');
-                    setStance(null);
-                    setTimerRail(null);
+                    pickerAutoOpenedRef.current = false;
                     // refresh the MMR trend after each game (ledger just appended)
                     fetch(`${RAIJIN_API}/api/mmr`)
                         .then(r => (r.ok ? r.json() : null))
                         .then(d => { if (d?.trend) setMmrTrend(d.trend); })
                         .catch(() => { /* engine offline */ });
-                    pickerAutoOpenedRef.current = false;
                     // Phase 4: fetch the latest post-game report and surface it
                     fetch(`${RAIJIN_API}/api/post-game/latest`)
                         .then(r => (r.ok ? r.json() : null))
@@ -234,7 +245,8 @@ export function RaijinRecs() {
                 } else if (update.type === 'connection') {
                     const cd = update.data as any;
                     if (cd.patch_status) setPatchStatus(cd.patch_status);
-                    if ('game_active' in cd && !cd.game_active) {
+                    // Respect a frozen review board — only blank when NOT reviewing.
+                    if ('game_active' in cd && !cd.game_active && !gameEndedRef.current) {
                         setHeroData(null);
                         setRecommendations([]);
                     }
@@ -264,7 +276,7 @@ export function RaijinRecs() {
         return () => { wsRef.current?.close(); };
     }, [connect]);
 
-    // Phase 5b.3: Alt+M (mute), Alt+S (settings), Alt+H (history).
+    // Phase 5b.3: Alt+M (mute), Alt+S (settings), Alt+Y (history).
     // Skipped when focus is in any input/textarea/contenteditable so the user
     // can still type the letters in the enemy-picker search field.
     const toggleMute = useCallback(async () => {
@@ -332,64 +344,34 @@ export function RaijinRecs() {
         return () => clearTimeout(t);
     }, [serverStatus, connStatus]);
 
-    // Category-based expiry — different rec types have different shelf lives
-    const REC_MAX_AGE: Record<string, number> = {
-        ITEM: 600_000,    // 10 min — items take time to farm
-        FIGHT: 600_000,   // 10 min — enemy predictions stay relevant a while
-        SKILL: 120_000,   // 2 min — you either skill it or you don't
-        TIMER: 60_000,    // 1 min — time-sensitive by nature
-        GENERAL: Infinity, // never expire — patch tips, hero knowledge, tower state
-    };
+    // Phase 1 (#6): the PacingController is the single source of what shows.
+    // A frozen board evaluates age at the moment the game ended, so review
+    // cards don't silently age out while you read them.
+    const effectiveNow = gameEnded ? endedAtRef.current : now;
+    const recs = useMemo(
+        () => visibleRecs(recommendations, effectiveNow, role),
+        [recommendations, effectiveNow, role],
+    );
 
-    // v4.1.4: Live-coaching "Raijin says" cards age out after 8 min regardless
-    // of category (they're GENERAL by default which would otherwise be
-    // Infinity — patch tips + hero knowledge + matchup + tower intel stay
-    // forever, live-coaching doesn't). Necro match had every 5-min milestone
-    // and every death's LLM output piling up through 30+ min of game time.
-    const LIVE_LLM_MAX_AGE = 8 * 60_000;
-
-    const visibleRecs = useMemo(() => recommendations.filter(r => {
-        const age = now - (r.receivedAt ?? now);
-        if (r.title.startsWith('Raijin says ')) {
-            return age < LIVE_LLM_MAX_AGE;
-        }
-        const maxAge = REC_MAX_AGE[r.category] ?? 300_000;
-        return age < maxAge;
-    }), [recommendations, now]);
-
-    const statusColor = connStatus === 'connected' ? pip.green
-        : connStatus === 'connecting' ? pip.amber : pip.red;
+    const statusColor = connStatus === 'connected' ? bcast.radiant
+        : connStatus === 'connecting' ? bcast.gold : bcast.dire;
     const statusLabel = connStatus === 'connected' ? 'ONLINE'
         : connStatus === 'connecting' ? 'SYNC..' : 'OFFLINE';
 
     return (
         <div style={{
-            position: 'absolute', top: 0, left: 56, right: 0, bottom: 0,
+            position: 'absolute', top: 0, left: SIDEBAR_W, right: 0, bottom: 0,
             display: 'grid',
-            gridTemplateColumns: '1fr 520px',
-            gridTemplateRows: 'auto 1fr auto auto 190px',
-            gap: 2,
-            padding: pip.sp3,
-            background: pip.bgDeep,
-            fontFamily: pip.font,
+            gridTemplateColumns: 'minmax(0, 1fr) minmax(320px, 30%)',
+            gridTemplateRows: 'auto auto auto minmax(0, 1fr) auto',
+            gap: 12,
+            padding: 14,
+            overflow: 'auto',
+            background: `radial-gradient(1200px 600px at 80% -10%, ${bcast.base2} 0%, transparent 60%), ${bcast.base}`,
+            fontFamily: bcast.body,
+            color: bcast.ink,
             pointerEvents: 'auto',
         }}>
-            {/* CRT scanline overlay */}
-            <div style={{
-                position: 'absolute', inset: 0,
-                backgroundImage: scanlines,
-                pointerEvents: 'none',
-                zIndex: 10,
-            }} />
-
-            {/* Vignette */}
-            <div style={{
-                position: 'absolute', inset: 0,
-                boxShadow: 'inset 0 0 150px rgba(0, 0, 0, 0.35)',
-                pointerEvents: 'none',
-                zIndex: 11,
-            }} />
-
             {/* Phase 5b.4: backend-offline banner — engine is up but WS disconnected. */}
             {showOfflineBanner && (
                 <div
@@ -397,18 +379,18 @@ export function RaijinRecs() {
                     aria-live="polite"
                     style={{
                         position: 'absolute',
-                        top: pip.sp3,
+                        top: 14,
                         left: '50%',
                         transform: 'translateX(-50%)',
-                        background: pip.bgInset,
-                        border: `2px solid ${pip.red}`,
-                        color: pip.red,
-                        padding: `${pip.sp2}px ${pip.sp4}px`,
-                        fontFamily: pip.font,
-                        fontSize: pip.textSm,
-                        letterSpacing: 1,
+                        background: bcast.panel,
+                        border: `1px solid ${bcast.dire}`,
+                        borderRadius: bcast.rSm,
+                        color: bcast.dire,
+                        padding: '8px 16px',
+                        fontFamily: bcast.body,
+                        fontSize: bcast.tSub,
+                        fontWeight: 600,
                         zIndex: 30,
-                        boxShadow: glow(pip.red, 10),
                     }}
                 >
                     RAIJIN ENGINE OFFLINE · coaching paused · reconnecting…
@@ -421,18 +403,17 @@ export function RaijinRecs() {
                     role="status"
                     style={{
                         position: 'absolute',
-                        top: pip.sp3,
+                        top: 14,
                         left: '50%',
                         transform: 'translateX(-50%)',
-                        background: pip.bgInset,
-                        border: `2px solid ${pip.amber}`,
-                        color: pip.amberBright,
-                        padding: `${pip.sp1}px ${pip.sp4}px`,
-                        fontFamily: pip.font,
-                        fontSize: pip.textSm,
-                        letterSpacing: 1,
+                        background: bcast.panel,
+                        border: `1px solid ${bcast.gold}`,
+                        borderRadius: bcast.rSm,
+                        color: bcast.gold,
+                        padding: '6px 16px',
+                        fontFamily: bcast.body,
+                        fontSize: bcast.tSub,
                         zIndex: 29,
-                        boxShadow: glow(pip.amber, 6),
                     }}
                 >
                     PATCH DRIFT: engine on {patchStatus.engine_version} · live is{' '}
@@ -440,186 +421,190 @@ export function RaijinRecs() {
                 </div>
             )}
 
-            {/* Server controls + Connection status + Settings gear */}
+            {/* Phase 1 (#11 bug d): frozen review chip — the board survived game end. */}
+            {gameEnded && heroData && (
+                <div
+                    role="status"
+                    style={{
+                        position: 'absolute',
+                        bottom: 16,
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        background: bcast.panel,
+                        border: `1px solid ${bcast.blue}`,
+                        borderRadius: bcast.rSm,
+                        color: bcast.blue,
+                        padding: '8px 16px',
+                        fontSize: bcast.tSub,
+                        fontWeight: 600,
+                        zIndex: 28,
+                    }}
+                >
+                    MATCH ENDED — board frozen for review
+                    <button
+                        onClick={dismissFrozenBoard}
+                        aria-label="Dismiss the frozen board"
+                        style={{
+                            background: 'transparent',
+                            border: `1px solid ${bcast.line}`,
+                            borderRadius: 6,
+                            color: bcast.ink,
+                            padding: '3px 10px',
+                            fontFamily: bcast.body,
+                            fontSize: bcast.tLabel,
+                            cursor: 'pointer',
+                        }}
+                    >
+                        DISMISS
+                    </button>
+                </div>
+            )}
+
+            {/* Header controls: role selector + reports + engine controls */}
             <div style={{
-                position: 'absolute', top: pip.sp3, right: pip.sp4, zIndex: 20,
-                fontFamily: pip.font,
-                display: 'flex', alignItems: 'center', gap: pip.sp3,
+                position: 'absolute', top: 14, right: 16, zIndex: 20,
+                fontFamily: bcast.body,
+                display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                justifyContent: 'flex-end',
             }}>
-                {/* v6 Phase 12: auto-detected bracket + MMR trend chips */}
+                {/* Phase 1 (#9): role selector — reweights what leads the glance */}
+                <div role="group" aria-label="Your role (reorders coaching surfaces)" style={{
+                    display: 'inline-flex', gap: 2,
+                    background: bcast.panel, border: `1px solid ${bcast.line}`,
+                    borderRadius: 999, padding: 3,
+                }}>
+                    {ROLES.map(r => (
+                        <button
+                            key={r.id}
+                            onClick={() => pickRole(role === r.id ? null : r.id)}
+                            aria-pressed={role === r.id}
+                            title={`Coach me as ${r.label}`}
+                            style={{
+                                background: role === r.id ? bcast.gold : 'transparent',
+                                color: role === r.id ? bcast.base : bcast.muted,
+                                border: 'none',
+                                borderRadius: 999,
+                                padding: '3px 9px',
+                                fontFamily: bcast.body,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                letterSpacing: '.06em',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            {r.label}
+                        </button>
+                    ))}
+                </div>
                 {bracket && (
                     <span
                         title={mmrTrend ?? 'MMR trend appears after the first tracked game'}
-                        style={{
-                            border: `1px solid ${pip.amberFaint}`,
-                            color: pip.amberDim,
-                            padding: '4px 10px',
-                            fontSize: pip.textXs,
-                            letterSpacing: 1,
-                            textTransform: 'uppercase',
-                        }}
+                        style={{ ...bLabel, border: `1px solid ${bcast.line}`, borderRadius: 999, padding: '4px 10px' }}
                     >
                         {bracket}{mmrTrend ? ` · ${mmrTrend.split(';')[0]}` : ''}
                     </span>
                 )}
-                {/* v4.1.1: persistent reach-in to the last post-game report.
-                    Previously the only way to re-open a dismissed report was
-                    Alt+Y → click the top history row, which isn't obvious. */}
-                <button
-                    onClick={async () => {
-                        try {
-                            const r = await fetch(`${RAIJIN_API}/api/post-game/latest`);
-                            if (r.ok) {
-                                const data = await r.json();
-                                if (data) setPostGameReport(data);
-                            }
-                        } catch { /* no engine / no report */ }
-                    }}
-                    aria-label="Open the most recent post-game report"
-                    title="Last report"
-                    style={{
-                        background: 'transparent',
-                        border: `1px solid ${pip.amberFaint}`,
-                        color: pip.amber,
-                        padding: '4px 10px',
-                        fontFamily: pip.font,
-                        fontSize: pip.textSm,
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        minHeight: 32,
-                    }}
-                >
-                    LAST REPORT
-                </button>
-                <button
-                    onClick={() => setHistoryOpen(true)}
-                    aria-label="Open match history (Alt+Y)"
-                    title="History (Alt+Y)"
-                    style={{
-                        background: 'transparent',
-                        border: `1px solid ${pip.amberFaint}`,
-                        color: pip.amber,
-                        padding: '4px 10px',
-                        fontFamily: pip.font,
-                        fontSize: pip.textSm,
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        minHeight: 32,
-                    }}
-                >
-                    HISTORY
-                </button>
-                <button
-                    onClick={() => setScoutingOpen(true)}
-                    aria-label="Open scouting form to set roles + lane"
-                    title="Scouting (set roles + lane before queue)"
-                    style={{
-                        background: 'transparent',
-                        border: `1px solid ${pip.amberFaint}`,
-                        color: pip.amber,
-                        padding: '4px 10px',
-                        fontFamily: pip.font,
-                        fontSize: pip.textSm,
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        minHeight: 32,
-                    }}
-                >
-                    {'\u25b8'} SCOUTING
-                </button>
-                <button
-                    onClick={() => setSettingsOpen(true)}
-                    aria-label="Open Raijin settings (Alt+S)"
-                    title="Settings (Alt+S)"
-                    style={{
-                        background: 'transparent',
-                        border: `1px solid ${pip.amberFaint}`,
-                        color: pip.amber,
-                        padding: '4px 10px',
-                        fontFamily: pip.font,
-                        fontSize: pip.textSm,
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        minHeight: 32,
-                    }}
-                >
-                    {'\u2699'} SETTINGS
-                </button>
+                <HeaderButton onClick={async () => {
+                    try {
+                        const r = await fetch(`${RAIJIN_API}/api/post-game/latest`);
+                        if (r.ok) {
+                            const data = await r.json();
+                            if (data) setPostGameReport(data);
+                        }
+                    } catch { /* no engine / no report */ }
+                }} label="LAST REPORT" aria="Open the most recent post-game report" />
+                <HeaderButton onClick={() => setHistoryOpen(true)} label="HISTORY" aria="Open match history (Alt+Y)" />
+                <HeaderButton onClick={() => setScoutingOpen(true)} label={'▸ SCOUTING'} aria="Open scouting form to set roles + lane" />
+                <HeaderButton onClick={() => setSettingsOpen(true)} label={'⚙ SETTINGS'} aria="Open Raijin settings (Alt+S)" />
                 <button
                     onClick={toggleServer}
-                    style={{
-                        background: serverStatus === 'ready' ? pip.bgInset
-                            : serverStatus === 'starting' ? pip.bgInset
-                            : pip.bgDeep,
-                        border: `1px solid ${serverStatus === 'ready' ? pip.green
-                            : serverStatus === 'starting' ? pip.amber
-                            : pip.amberFaint}`,
-                        borderRadius: 0,
-                        padding: '4px 12px',
-                        color: serverStatus === 'ready' ? pip.green
-                            : serverStatus === 'starting' ? pip.amber
-                            : pip.amberDim,
-                        fontSize: pip.textSm,
-                        fontWeight: 700,
-                        fontFamily: pip.font,
-                        letterSpacing: 1,
-                        cursor: serverStatus === 'starting' ? 'wait' : 'pointer',
-                        textShadow: serverStatus === 'ready' ? glowText(pip.green, 4)
-                            : serverStatus === 'starting' ? glowText(pip.amber, 4) : undefined,
-                        boxShadow: serverStatus === 'ready' ? glow(pip.green, 4) : undefined,
-                    }}
                     disabled={serverStatus === 'starting'}
+                    style={{
+                        background: serverStatus === 'ready' ? 'rgba(59,224,160,.12)' : bcast.panel,
+                        border: `1px solid ${serverStatus === 'ready' ? bcast.radiant
+                            : serverStatus === 'starting' ? bcast.gold : bcast.line}`,
+                        borderRadius: 8,
+                        padding: '5px 12px',
+                        color: serverStatus === 'ready' ? bcast.radiant
+                            : serverStatus === 'starting' ? bcast.gold : bcast.muted,
+                        fontSize: bcast.tLabel,
+                        fontWeight: 700,
+                        fontFamily: bcast.body,
+                        letterSpacing: '.08em',
+                        cursor: serverStatus === 'starting' ? 'wait' : 'pointer',
+                        minHeight: 30,
+                    }}
                 >
                     {serverStatus === 'ready' ? 'STOP ENGINE'
                         : serverStatus === 'starting' ? 'STARTING...'
                         : 'START ENGINE'}
                 </button>
                 <span style={{
-                    fontSize: pip.textSm,
+                    ...bNum,
+                    fontSize: bcast.tLabel,
                     fontWeight: 700,
                     color: statusColor,
-                    letterSpacing: 1,
-                    textShadow: glowText(statusColor, 6),
+                    letterSpacing: '.08em',
                 }}>
                     [{statusLabel}]
                 </span>
             </div>
 
-            <RaijinTeamIntel
-                enemyIntel={enemyIntel}
-                heroData={heroData}
-                enemySource={enemySource}
-                onSourceClick={() => setPickerOpen(true)}
-            />
-            <RaijinHeroDisplay heroData={heroData} recommendations={visibleRecs} />
-            <RaijinStrategy recommendations={visibleRecs} />
-            <RaijinStanceBanner stance={heroData ? stance : null} />
-            <RaijinTimerRail
-                rail={heroData && timerRail ? timerRail.data : null}
-                receivedAt={timerRail?.receivedAt ?? null}
-            />
-            <RaijinActionBar
-                recommendations={visibleRecs}
-                heroData={heroData}
-                ttsEnabled={ttsEnabled}
-                ttsMuted={ttsMuted}
-                onToggleMute={async () => {
-                    const next = !ttsMuted;
-                    setTtsMuted(next);
-                    try {
-                        await fetch(`${RAIJIN_API}/api/settings/tts`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ muted: next }),
-                        });
-                    } catch {
-                        /* offline — state is optimistic */
-                    }
-                }}
+            {/* Row 1 (span): score/intel strip */}
+            <div style={{ gridColumn: '1 / -1', display: 'grid' }}>
+                <RaijinTeamIntel
+                    enemyIntel={enemyIntel}
+                    heroData={heroData}
+                    enemySource={enemySource}
+                    onSourceClick={() => setPickerOpen(true)}
+                />
+            </div>
+
+            {/* Phase 1 (#8): queue-time briefing — replaces the dead pre-game wall */}
+            <RaijinBriefingRoom
+                visible={serverStatus === 'ready' && !heroData && !gameEnded}
+                onOpenScouting={() => setScoutingOpen(true)}
             />
 
-            {/* Death-timer coaching panel — conditional on alive=false */}
-            <RaijinDeathPanel heroData={heroData} recommendations={visibleRecs} />
+            {/* Row 2 col 1: THE priority action (centerpiece) */}
+            <div style={{ gridColumn: 1, display: 'grid' }}>
+                <RaijinActionBar
+                    recommendations={recs}
+                    heroData={gameEnded ? null : heroData}
+                    role={role}
+                    ttsEnabled={ttsEnabled}
+                    ttsMuted={ttsMuted}
+                    onToggleMute={toggleMute}
+                />
+            </div>
+
+            {/* Right rail (rows 2-4): stance + WHY-first feed */}
+            <div style={{
+                gridColumn: 2, gridRow: '2 / 6',
+                display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0,
+            }}>
+                <RaijinStanceBanner stance={heroData && !gameEnded ? stance : null} />
+                <RaijinStrategy recommendations={recs} />
+            </div>
+
+            {/* Row 3 col 1: hero panel */}
+            <div style={{ gridColumn: 1, display: 'grid' }}>
+                <RaijinHeroDisplay heroData={heroData} recommendations={recs} />
+            </div>
+
+            {/* Row 4 col 1: timers (hidden on a frozen board — countdowns are dead) */}
+            <div style={{ gridColumn: 1, display: 'grid', alignContent: 'start' }}>
+                <RaijinTimerRail
+                    rail={heroData && timerRail && !gameEnded ? timerRail.data : null}
+                    receivedAt={timerRail?.receivedAt ?? null}
+                />
+            </div>
+
+            {/* Death-timer coaching panel — never over a frozen review board */}
+            {!gameEnded && <RaijinDeathPanel heroData={heroData} recommendations={recs} />}
 
             {/* Enemy picker modal — manually or auto-triggered */}
             <RaijinEnemyPicker
@@ -682,6 +667,33 @@ export function RaijinRecs() {
                 }}
             />
         </div>
+    );
+}
+
+function HeaderButton({ onClick, label, aria }: {
+    onClick: () => void; label: string; aria: string;
+}) {
+    return (
+        <button
+            onClick={onClick}
+            aria-label={aria}
+            title={aria}
+            style={{
+                background: 'transparent',
+                border: `1px solid ${bcast.line}`,
+                borderRadius: 8,
+                color: bcast.muted,
+                padding: '5px 11px',
+                fontFamily: bcast.body,
+                fontSize: bcast.tLabel,
+                fontWeight: 600,
+                letterSpacing: '.06em',
+                cursor: 'pointer',
+                minHeight: 30,
+            }}
+        >
+            {label}
+        </button>
     );
 }
 

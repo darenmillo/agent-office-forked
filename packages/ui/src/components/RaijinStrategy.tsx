@@ -1,271 +1,174 @@
+/** Coaching feed (Phase 1, #3) — RecCard v2, WHY-FIRST.
+ *
+ * The verified centerpiece pattern: `rec.reason` renders as the primary
+ * supporting line, the directive/title is the headline, `body` is tertiary
+ * detail. Every card carries a category chip + a quiet "as of MM:SS" stamp
+ * from receivedAt, and ages toward transparency instead of vanishing
+ * mid-glance. Ordering/budgets come from the PacingController upstream.
+ */
 import React, { useState } from 'react';
 import { Recommendation, effectiveUrgency } from '../raijinTypes';
-import { pip, panelBase, labelStyle, glowText } from '../raijinTheme';
+import { bcast, bLabel, bNum, asOf } from '../raijinTheme';
+import { ageWindow } from '../pacing';
 
 interface Props {
     recommendations: Recommendation[];
 }
 
-/** Category accent mapping */
-const CAT_ACCENT: Record<string, string> = {
-    coach: pip.catCoach,
-    items: pip.catItem,
-    timers: pip.catTimer,
-    fight: pip.catFight,
-    recent: pip.catRecent,
+/** Category -> accent stripe (broadcast palette; gold stays priority-only
+ *  in the PriorityAction tile — the feed uses goldDim for items). */
+const CAT_ACCENT: Record<Recommendation['category'], string> = {
+    FIGHT: bcast.dire,
+    ITEM: bcast.goldDim,
+    TIMER: bcast.blue,
+    SKILL: bcast.radiant,
+    GENERAL: bcast.muted,
+};
+
+const CAT_LABEL: Record<Recommendation['category'], string> = {
+    FIGHT: 'Fight', ITEM: 'Item', TIMER: 'Timer', SKILL: 'Skill', GENERAL: 'Coach',
 };
 
 export function RaijinStrategy({ recommendations }: Props) {
-    const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-    const toggle = (key: string) => setCollapsed(prev => ({ ...prev, [key]: !prev[key] }));
-
-    // Tag-based knowledge detection — replaces the fragile title.includes('7.41')
-    // filter. Backend attaches tags=['knowledge'] / 'patch' / 'phase' to one-time
-    // informational recs; those are surfaced in the GAME INTEL section.
+    const [showAll, setShowAll] = useState(false);
     const isKnowledge = (r: Recommendation) => !!r.tags?.some(
-        t => t === 'knowledge' || t === 'patch' || t === 'phase'
+        t => t === 'knowledge' || t === 'patch' || t === 'phase',
     );
 
-    const general = recommendations.filter(r => r.tier === 'ANALYTICAL');
-    const timers = recommendations.filter(r => r.category === 'TIMER');
-    const items = recommendations.filter(r => r.category === 'ITEM');
-    const fight = recommendations.filter(r => r.category === 'FIGHT' && !isKnowledge(r));
-    // All non-LLM GENERAL recs: gold warnings, CS checks, buyback, ult ready, game flow, etc.
-    const coaching = recommendations.filter(r =>
-        r.category === 'GENERAL' && r.tier !== 'ANALYTICAL'
-    );
-    // Tag-based knowledge split — back-compat for old recs that set neither urgency nor tags
-    const knowledge = [
-        ...coaching.filter(isKnowledge),
-        ...recommendations.filter(r => r.category === 'FIGHT' && isKnowledge(r)),
-    ];
-    const activeCoaching = coaching.filter(r => !isKnowledge(r));
+    // The pacing controller already ordered + budgeted; the feed just splits
+    // the long-lived knowledge cards from the live stream.
+    const live = recommendations.filter(r => !isKnowledge(r));
+    const knowledge = recommendations.filter(isKnowledge);
+    const shown = showAll ? live : live.slice(0, 8);
 
     return (
-        <div style={{ ...panelBase, overflowY: 'auto' }}>
-            <h3 style={{
-                margin: '0 0 12px',
-                fontSize: pip.textLg,
-                color: pip.amber,
-                fontWeight: 700,
-                fontFamily: pip.font,
-                letterSpacing: 3,
-                textTransform: 'uppercase',
-                textShadow: glowText(pip.amber),
-                borderBottom: `2px solid ${pip.amberFaint}`,
-                paddingBottom: pip.sp2,
-            }}>
-                STRATEGY
-            </h3>
-
-            {/* FIGHT + ENEMY PREDICTIONS — most time-sensitive */}
-            <Section
-                title="ENEMY INTEL"
-                count={fight.length}
-                collapsed={collapsed['fight']}
-                onToggle={() => toggle('fight')}
-                accent={CAT_ACCENT.fight}
-            >
-                {fight.length === 0 ? (
-                    <EmptyHint>Enemy predictions + fight targets appear once enemies are set.</EmptyHint>
-                ) : (
-                    fight.slice(0, 5).map((rec, i) => (
-                        <RecCard key={i} rec={rec} accent={CAT_ACCENT.fight} />
-                    ))
-                )}
-            </Section>
-
-            {/* ACTIVE COACHING — gold, CS, buyback, ult ready, game flow */}
-            {activeCoaching.length > 0 && (
-                <Section
-                    title="COACHING"
-                    count={activeCoaching.length}
-                    collapsed={collapsed['coaching']}
-                    onToggle={() => toggle('coaching')}
-                    accent={pip.amberBright}
-                >
-                    {activeCoaching.slice(0, 5).map((rec, i) => (
-                        <RecCard key={i} rec={rec} accent={pip.amberBright} />
-                    ))}
-                </Section>
-            )}
-
-            {/* ITEM ADVICE — actionable */}
-            <Section
-                title="ITEM ADVICE"
-                count={items.length}
-                collapsed={collapsed['items']}
-                onToggle={() => toggle('items')}
-                accent={CAT_ACCENT.items}
-            >
-                {items.length === 0 ? (
-                    <EmptyHint>Item suggestions will appear based on enemy lineup.</EmptyHint>
-                ) : (
-                    items.slice(0, 5).map((rec, i) => (
-                        <RecCard key={i} rec={rec} accent={CAT_ACCENT.items} />
-                    ))
-                )}
-            </Section>
-
-            {/* RAIJIN SAYS — LLM coaching, limited to 2 to not dominate */}
-            <Section
-                title="RAIJIN SAYS"
-                count={general.length}
-                collapsed={collapsed['general']}
-                onToggle={() => toggle('general')}
-                accent={CAT_ACCENT.coach}
-            >
-                {general.length === 0 ? (
-                    <EmptyHint>Coaching advice appears at milestones + on death.</EmptyHint>
-                ) : (
-                    general.slice(0, 2).map((rec, i) => (
-                        <RecCard key={i} rec={rec} accent={CAT_ACCENT.coach} />
-                    ))
-                )}
-            </Section>
-
-            {/* KNOWLEDGE — patch tips, hero playstyle, tower state */}
-            {knowledge.length > 0 && (
-                <Section
-                    title="GAME INTEL"
-                    count={knowledge.length}
-                    collapsed={collapsed['knowledge']}
-                    onToggle={() => toggle('knowledge')}
-                    accent={pip.amberBright}
-                >
-                    {knowledge.slice(0, 4).map((rec, i) => (
-                        <RecCard key={i} rec={rec} accent={pip.amberBright} />
-                    ))}
-                </Section>
-            )}
-
-            {/* TIMERS — least urgent, at bottom */}
-            <Section
-                title="TIMERS"
-                count={timers.length}
-                collapsed={collapsed['timers'] ?? true}
-                onToggle={() => toggle('timers')}
-                accent={CAT_ACCENT.timers}
-            >
-                {timers.length === 0 ? (
-                    <EmptyHint>Stack, rune, and Roshan timers.</EmptyHint>
-                ) : (
-                    timers.slice(0, 4).map((rec, i) => (
-                        <RecCard key={i} rec={rec} accent={CAT_ACCENT.timers} />
-                    ))
-                )}
-            </Section>
-        </div>
-    );
-}
-
-/* ── Collapsible Section ── */
-function Section({ title, count, collapsed, onToggle, accent, children }: {
-    title: string; count: number; collapsed?: boolean;
-    onToggle: () => void; accent: string; children: React.ReactNode;
-}) {
-    return (
-        <div style={{ marginBottom: pip.sp4 }}>
-            <div
-                onClick={onToggle}
-                style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    cursor: 'pointer',
-                    padding: `${pip.sp1}px 0`,
-                    borderBottom: `1px solid ${pip.amberGhost}`,
-                    marginBottom: pip.sp2,
-                    transition: 'background 0.15s',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = pip.bgHover; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-            >
-                <span style={{
-                    fontSize: pip.textBase,
-                    fontWeight: 700,
-                    color: accent,
-                    fontFamily: pip.font,
-                    letterSpacing: 1,
-                }}>
-                    {collapsed ? '\u25B6' : '\u25BC'} {title}
-                </span>
-                {count > 0 && (
-                    <span style={{
-                        fontSize: pip.textSm,
-                        color: pip.amberDim,
-                        fontFamily: pip.font,
-                        fontWeight: 600,
-                    }}>
-                        ({count})
-                    </span>
-                )}
+        <section
+            aria-label="Coaching feed"
+            style={{
+                flex: 1,
+                minHeight: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 10,
+                overflowY: 'auto',
+                paddingRight: 2,
+                fontFamily: bcast.body,
+            }}
+        >
+            <div style={{ ...bLabel, display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                <span>Coaching feed</span>
+                <span>WHY-first</span>
             </div>
-            {!collapsed && children}
-        </div>
+
+            {shown.length === 0 && (
+                <div style={{
+                    fontSize: bcast.tBody,
+                    color: bcast.faint,
+                    padding: '6px 2px',
+                }}>
+                    Reads land here as the game develops — fights, items, timers.
+                </div>
+            )}
+
+            {shown.map((rec, i) => <RecCard key={`${rec.category}|${rec.title}|${rec.receivedAt}`} rec={rec} first={i === 0} />)}
+
+            {live.length > 8 && (
+                <button
+                    onClick={() => setShowAll(v => !v)}
+                    style={{
+                        background: 'transparent',
+                        border: `1px solid ${bcast.line}`,
+                        borderRadius: bcast.rSm,
+                        color: bcast.muted,
+                        padding: '6px 10px',
+                        fontFamily: bcast.body,
+                        fontSize: bcast.tLabel,
+                        cursor: 'pointer',
+                    }}
+                >
+                    {showAll ? 'SHOW FEWER' : `SHOW ALL (${live.length})`}
+                </button>
+            )}
+
+            {knowledge.length > 0 && (
+                <>
+                    <div style={{ ...bLabel, fontSize: 11, marginTop: 4 }}>Game intel</div>
+                    {knowledge.slice(0, 4).map(rec => (
+                        <RecCard key={`${rec.category}|${rec.title}|${rec.receivedAt}`} rec={rec} />
+                    ))}
+                </>
+            )}
+        </section>
     );
 }
 
-/* ── Recommendation Card ── */
-function RecCard({ rec, accent }: { rec: Recommendation; accent: string }) {
+/* ── RecCard v2 — WHY-first ── */
+function RecCard({ rec, first = false }: { rec: Recommendation; first?: boolean }) {
     const urgency = effectiveUrgency(rec);
     const isCritical = urgency === 'CRITICAL';
-    const isImportant = urgency === 'IMPORTANT';
-    const borderColor = isCritical ? pip.red : accent;
-    // WCAG AA: amberDim body text fails contrast; use amber for CRITICAL/IMPORTANT body.
-    const bodyColor = isCritical || isImportant ? pip.amber : pip.amberDim;
-    const titleColor = isCritical ? pip.red : isImportant ? pip.amber : pip.amberDim;
+    const accent = isCritical ? bcast.dire : CAT_ACCENT[rec.category] ?? bcast.muted;
+    // Age decay: fade the card through the back half of its shelf life.
+    const age = Date.now() - (rec.receivedAt ?? Date.now());
+    const window = ageWindow(rec);
+    const decay = Math.min(Math.max((age / window - 0.5) * 2, 0), 0.55);
+    const why = rec.reason?.trim();
+
     return (
-        <div
-            className={`raijin-rec-card${isCritical ? ' raijin-rec-card-critical' : ''}`}
+        <article
+            className="raijin-rec-card"
             style={{
-                borderLeft: `3px solid ${borderColor}`,
-                padding: `${pip.sp2}px ${pip.sp3}px`,
-                marginBottom: pip.sp2,
-                background: isCritical || isImportant ? pip.bgHover : pip.bgInset,
+                background: bcast.panel,
+                border: `1px solid ${bcast.line}`,
+                borderLeft: `3px solid ${accent}`,
+                borderRadius: bcast.rSm,
+                padding: '11px 12px',
+                opacity: 1 - decay,
+                animation: first ? `raijin-rec-rise .35s ${bcast.ease} both` : undefined,
             }}
         >
             <style>{`
-                .raijin-rec-card {
-                    transition: opacity 300ms ease-out;
+                @keyframes raijin-rec-rise {
+                    from { opacity: 0; transform: translateY(8px); }
+                    to { transform: none; }
                 }
                 @media (prefers-reduced-motion: reduce) {
-                    .raijin-rec-card {
-                        transition: none;
-                    }
+                    .raijin-rec-card { animation: none !important; }
                 }
             `}</style>
             <div style={{
-                fontSize: pip.textBase,
-                fontWeight: 700,
-                color: titleColor,
-                fontFamily: pip.font,
-                textShadow: isCritical ? glowText(pip.red, 4) : undefined,
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                gap: 8, marginBottom: 4,
+            }}>
+                <span style={{
+                    fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase',
+                    fontWeight: 600, color: accent,
+                }}>
+                    {isCritical ? 'CRITICAL' : CAT_LABEL[rec.category] ?? rec.category}
+                </span>
+                <span style={{ ...bNum, fontSize: 12, color: bcast.faint }}>{asOf(rec.receivedAt)}</span>
+            </div>
+            <div style={{
+                fontSize: bcast.tRec,
+                fontWeight: 600,
+                lineHeight: 1.25,
+                color: isCritical ? bcast.dire : bcast.ink,
             }}>
                 {rec.title}
             </div>
-            <div style={{
-                fontSize: pip.textBase,
-                color: bodyColor,
-                fontFamily: pip.font,
-                marginTop: pip.sp1,
-                lineHeight: 1.5,
-            }}>
-                {rec.body}
-            </div>
-        </div>
-    );
-}
-
-/* ── Empty state hint ── */
-function EmptyHint({ children }: { children: React.ReactNode }) {
-    return (
-        <div style={{
-            fontSize: pip.textBase,
-            color: pip.amberGhost,
-            fontFamily: pip.font,
-            fontStyle: 'italic',
-            padding: `${pip.sp1}px 0`,
-        }}>
-            {children}
-        </div>
+            {why ? (
+                <div style={{ fontSize: bcast.tSub, color: bcast.muted, lineHeight: 1.45, marginTop: 5 }}>
+                    <b style={{ color: bcast.ink, fontWeight: 600 }}>Why:</b> {why}
+                    {rec.body && rec.body !== why && (
+                        <span style={{ color: bcast.faint }}> · {rec.body}</span>
+                    )}
+                </div>
+            ) : (
+                rec.body && (
+                    <div style={{ fontSize: bcast.tSub, color: bcast.muted, lineHeight: 1.45, marginTop: 5 }}>
+                        {rec.body}
+                    </div>
+                )
+            )}
+        </article>
     );
 }

@@ -87,55 +87,26 @@ function ItemSlot({ name, size }: { name: string | null; size: number }) {
     );
 }
 
-/* ── Items Grid ── */
+/* ── Items Grid (v2, Phase 1 #10 — TRUTHFUL) ──
+ * The backend item list is flat and its slot split (_parse_items_split) is
+ * known-broken, so the old main/backpack/neutral/TP layout FABRICATED slot
+ * positions (the audit's "N"/"TP" labels). Until the backend split is fixed,
+ * render exactly what is verified: the owned-items list, in feed order,
+ * with no slot claims. */
 function ItemsGrid({ items }: { items: string[] }) {
-    const padded: (string | null)[] = [];
-    for (let i = 0; i < 11; i++) padded.push(items[i] ?? null);
-
-    const main = padded.slice(0, 6);
-    const backpack = padded.slice(6, 9);
-    const neutral = padded[9];
-    const tp = padded[10];
-
     return (
         <div style={{ marginBottom: pip.sp4 }}>
-            <div style={{ ...labelStyle, marginBottom: pip.sp2 }}>INVENTORY</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: pip.sp3 }}>
-                {/* 6 main slots */}
-                <div style={{ display: 'flex', gap: 3 }}>
-                    {main.map((item, i) => <ItemSlot key={`m-${i}`} name={item} size={38} />)}
-                </div>
-
-                {/* Separator */}
-                <div style={{ width: 2, height: 30, background: pip.amberFaint, flexShrink: 0 }} />
-
-                {/* 3 backpack */}
-                <div style={{ display: 'flex', gap: 3 }}>
-                    {backpack.map((item, i) => <ItemSlot key={`b-${i}`} name={item} size={30} />)}
-                </div>
-
-                {/* Separator */}
-                <div style={{ width: 2, height: 30, background: pip.amberFaint, flexShrink: 0 }} />
-
-                {/* Neutral */}
-                <div style={{ position: 'relative' }}>
-                    <ItemSlot name={neutral} size={32} />
-                    <div style={{
-                        ...labelStyle, position: 'absolute', bottom: -14,
-                        left: 0, right: 0, textAlign: 'center',
-                        fontSize: 9, letterSpacing: 1,
-                    }}>N</div>
-                </div>
-
-                {/* TP */}
-                <div style={{ position: 'relative' }}>
-                    <ItemSlot name={tp} size={32} />
-                    <div style={{
-                        ...labelStyle, position: 'absolute', bottom: -14,
-                        left: 0, right: 0, textAlign: 'center',
-                        fontSize: 9, letterSpacing: 1,
-                    }}>TP</div>
-                </div>
+            <div style={{ ...labelStyle, marginBottom: pip.sp2 }}>
+                ITEMS ({items.length})
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
+                {items.length === 0 ? (
+                    <span style={{ ...labelStyle, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+                        no items reported yet
+                    </span>
+                ) : (
+                    items.map((item, i) => <ItemSlot key={`i-${i}`} name={item} size={38} />)
+                )}
             </div>
         </div>
     );
