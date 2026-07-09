@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&amp;family=Inter:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;height:100%;background:#050608;overflow:hidden}
+a{color:#FFB000}a:hover{color:#FFD54F}
+@keyframes ping-a{0%{box-shadow:0 0 0 0 rgba(255,176,0,.5)}70%,100%{box-shadow:0 0 0 12px rgba(0,0,0,0)}}
+@keyframes ping-d{0%{box-shadow:0 0 0 0 rgba(255,89,100,.5)}70%,100%{box-shadow:0 0 0 12px rgba(0,0,0,0)}}
+@keyframes breathe{0%,100%{opacity:.5}50%{opacity:1}}
+@media (prefers-reduced-motion:reduce){*{animation:none !important}}
+</style>
+</helmet>
+
+<div style="position:fixed;inset:0;background:#050608;display:flex;align-items:center;justify-content:center;box-sizing:border-box;font-family:Inter,system-ui,sans-serif">
+  <div style="width:1920px;height:1080px;flex:none;transform:scale({{stageScale}});transform-origin:center center">
+    <div style="width:1920px;height:1080px;overflow:hidden;background:#0B0C0E;color:#C9D1DA;font-family:'IBM Plex Mono',ui-monospace,monospace;display:grid;grid-template-rows:64px minmax(0,1fr) 158px">
+
+      <!-- ── header ── -->
+      <div style="display:grid;grid-template-columns:620px minmax(0,1fr);border-bottom:1px solid #21252B">
+        <div style="display:flex;align-items:center;gap:24px;padding:0 32px;border-right:1px solid #21252B">
+          <span style="font-family:'Chakra Petch',sans-serif;font-size:18px;font-weight:700;letter-spacing:.3em;color:#FFB000">RAIJIN</span>
+          <span style="font-size:11px;letter-spacing:.18em;color:#4A525E">CONSOLE · 7.41d · CRUSADER</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:0 32px;font-size:12px;letter-spacing:.14em;font-variant-numeric:tabular-nums">
+          <span style="color:#4A525E">T+<span style="color:#EDF1F6;font-size:17px">{{ clock }}</span></span>
+          <span style="color:#4A525E">AXE · POS 3 · LV <span style="color:#C9D1DA">14</span></span>
+          <span style="color:#4A525E">SCORE <span style="color:#3BE0A0">16</span>–<span style="color:#FF5964">19</span></span>
+          <span style="color:#4A525E">GSI <span style="color:#3BE0A0">●</span> 0.5s &nbsp; LLM <span style="color:#FFB000">●</span> ~9s &nbsp; INTEL <span style="color:#FF5964">●</span> ~2m</span>
+        </div>
+      </div>
+
+      <!-- ── body ── -->
+      <div style="display:grid;grid-template-columns:620px minmax(0,1fr);min-height:0">
+
+        <!-- left column -->
+        <div style="border-right:1px solid #21252B;display:grid;grid-template-rows:auto auto minmax(0,1fr)">
+
+          <!-- 01 DIRECTIVE -->
+          <div style="padding:28px 32px 24px;border-bottom:1px solid #21252B">
+            <div style="display:flex;align-items:center;justify-content:space-between">
+              <span style="font-size:11px;letter-spacing:.26em;color:#4A525E">01 · DIRECTIVE</span>
+              <sc-if value="{{ bmNotDone }}" hint-placeholder-val="{{ true }}">
+                <span style="display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.2em;color:#FFB000"><span style="width:7px;height:7px;background:#FFB000;animation:ping-a 1.8s ease-out infinite"></span>LIVE</span>
+              </sc-if>
+              <sc-if value="{{ bmDone }}" hint-placeholder-val="{{ false }}">
+                <span style="display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.2em;color:#3BE0A0"><span style="width:7px;height:7px;background:#3BE0A0;animation:ping-a 1.8s ease-out infinite"></span>SPIKE REACHED</span>
+              </sc-if>
+            </div>
+            <sc-if value="{{ bmNotDone }}" hint-placeholder-val="{{ true }}">
+              <div style="font-family:'Chakra Petch',sans-serif;font-size:52px;line-height:1.02;font-weight:700;margin:16px 0 12px;color:#EDF1F6;letter-spacing:.005em">FARM TOP UNTIL<br><span style="color:#FFB000">BLADE MAIL</span></div>
+              <p style="margin:0;font-size:16px;line-height:1.55;color:#7E8896;font-family:Inter,sans-serif;max-width:52ch">You can't contest Rosh at −4 levels. Two waves and the ancient stack close the gold. Then their dive pattern feeds you instead of them.</p>
+            </sc-if>
+            <sc-if value="{{ bmDone }}" hint-placeholder-val="{{ false }}">
+              <div style="font-family:'Chakra Petch',sans-serif;font-size:52px;line-height:1.02;font-weight:700;margin:16px 0 12px;color:#EDF1F6;letter-spacing:.005em">BLADE MAIL <span style="color:#3BE0A0">ONLINE</span><br>JOIN ON YOUR TERMS</div>
+              <p style="margin:0;font-size:16px;line-height:1.55;color:#7E8896;font-family:Inter,sans-serif;max-width:52ch">Shop it on the next back. Now their dive is your damage — take fights near your towers, still never solo across the river.</p>
+            </sc-if>
+            <div style="margin-top:18px">
+              <div style="display:flex;justify-content:space-between;font-size:11px;letter-spacing:.16em;color:#4A525E;margin-bottom:7px;font-variant-numeric:tabular-nums"><span>{{ gold }} / 2100 G</span><span style="color:#C9D1DA">{{ bmEtaLabel }}</span></div>
+              <div style="height:2px;background:#21252B;position:relative"><div style="position:absolute;left:0;top:0;bottom:0;width:{{ goldPct }}%;background:#FFB000"></div><div style="position:absolute;left:{{ goldPct }}%;top:-3px;width:1px;height:8px;background:#FFB000"></div></div>
+            </div>
+          </div>
+
+          <!-- 02 STANCE -->
+          <div style="padding:20px 32px;border-bottom:1px solid #21252B">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <span style="font-size:11px;letter-spacing:.26em;color:#4A525E">02 · STANCE</span>
+              <span style="font-size:11px;letter-spacing:.14em;color:#4A525E">CONF <span style="color:#C9D1DA;font-variant-numeric:tabular-nums">82</span> · DISCIPLINE LOCK</span>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:28px;margin-top:10px">
+              <span style="font-family:'Chakra Petch',sans-serif;font-size:40px;font-weight:700;color:#4FA3FF;letter-spacing:.04em">FARM</span>
+              <span style="font-family:'Chakra Petch',sans-serif;font-size:19px;font-weight:600;color:#2A3038;letter-spacing:.06em">FIGHT</span>
+              <span style="font-family:'Chakra Petch',sans-serif;font-size:19px;font-weight:600;color:#2A3038;letter-spacing:.06em">PUSH</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;margin-top:12px;border-top:1px solid #171A1F">
+              <div style="padding:10px 24px 0 0;border-right:1px solid #171A1F"><span style="font-size:10px;letter-spacing:.2em;color:#4A525E">FLIPS TO FIGHT IF</span><div style="font-size:13.5px;color:#C9D1DA;font-family:Inter,sans-serif;line-height:1.45;margin-top:4px">4+ allies commit at the pit and you have TP</div></div>
+              <div style="padding:10px 0 0 24px"><span style="font-size:10px;letter-spacing:.2em;color:#FF5964">BREAKS IF</span><div style="font-size:13.5px;color:#C9D1DA;font-family:Inter,sans-serif;line-height:1.45;margin-top:4px">You cross the river unwarded — 3 of 7 deaths started there</div></div>
+            </div>
+          </div>
+
+          <!-- 03 LOG -->
+          <div style="padding:20px 32px;min-height:0;overflow:hidden">
+            <div style="display:flex;justify-content:space-between;margin-bottom:12px"><span style="font-size:11px;letter-spacing:.26em;color:#4A525E">03 · LOG · WHY-FIRST</span><span style="font-size:10px;letter-spacing:.18em;color:#2A3038">AGES OUT, NEVER VANISHES</span></div>
+            <div style="display:grid;grid-template-columns:58px 14px 1fr;font-variant-numeric:tabular-nums">
+              <span style="font-size:12px;color:#4A525E;padding:11px 0;border-top:1px solid #171A1F">22:09</span><span style="color:#FF5964;padding:11px 0;border-top:1px solid #171A1F">▮</span><div style="font-family:Inter,sans-serif;font-size:15.5px;line-height:1.5;color:#C9D1DA;padding:11px 0;border-top:1px solid #171A1F"><b>No buyback.</b> <span style="color:#7E8896">It costs everything you have; dying without it in the Rosh window loses the game.</span></div>
+              <span style="font-size:12px;color:#4A525E;padding:11px 0;border-top:1px solid #171A1F">21:48</span><span style="color:#FFB000;padding:11px 0;border-top:1px solid #171A1F">▮</span><div style="font-family:Inter,sans-serif;font-size:15.5px;line-height:1.5;color:#C9D1DA;padding:11px 0;border-top:1px solid #171A1F"><b>Blade Mail over Blink.</b> <span style="color:#7E8896">AM manta-dodges the call but not the reflect.</span></div>
+              <span style="font-size:12px;color:#4A525E;padding:11px 0;border-top:1px solid #171A1F">21:30</span><span style="color:#5AA9FF;padding:11px 0;border-top:1px solid #171A1F">▮</span><div style="font-family:Inter,sans-serif;font-size:15.5px;line-height:1.5;color:#C9D1DA;padding:11px 0;border-top:1px solid #171A1F"><b>Ward the pit before 23:45.</b> <span style="color:#7E8896">Aegis on AM ends it; vision is the only counter you can buy.</span></div>
+              <span style="font-size:12px;color:#4A525E;padding:11px 0;border-top:1px solid #171A1F">20:55</span><span style="color:#4A525E;padding:11px 0;border-top:1px solid #171A1F">▮</span><div style="font-family:Inter,sans-serif;font-size:15.5px;line-height:1.5;color:#7E8896;padding:11px 0;border-top:1px solid #171A1F">CS pace 4.0/min vs 5.6 bracket median — the gap is a farm gap.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- right column -->
+        <div style="display:grid;grid-template-rows:minmax(0,1fr) 302px;min-height:0">
+
+          <!-- 04 THE GAP -->
+          <div style="display:grid;grid-template-rows:auto minmax(0,1fr);min-height:0;border-bottom:1px solid #21252B">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;padding:26px 36px 0">
+              <span style="font-size:11px;letter-spacing:.26em;color:#4A525E">04 · THE GAP — NET WORTH BY MINUTE</span>
+              <span style="display:flex;gap:20px;font-size:11px;letter-spacing:.12em"><span style="color:#FFB000">━ YOU</span><span style="color:#FF5964">━ ANTI-MAGE</span><span style="color:#3A414B">╌ CRUSADER P3 MEDIAN</span></span>
+            </div>
+            <div style="position:relative;margin:16px 36px 22px;min-height:0">
+              <svg viewBox="0 0 1180 440" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%">
+                <g stroke="#171A1F" stroke-width="1">
+                  <line x1="0" y1="73" x2="1180" y2="73"></line><line x1="0" y1="146" x2="1180" y2="146"></line><line x1="0" y1="219" x2="1180" y2="219"></line><line x1="0" y1="292" x2="1180" y2="292"></line><line x1="0" y1="365" x2="1180" y2="365"></line>
+                  <line x1="236" y1="0" x2="236" y2="440"></line><line x1="472" y1="0" x2="472" y2="440"></line><line x1="708" y1="0" x2="708" y2="440"></line><line x1="944" y1="0" x2="944" y2="440"></line>
+                </g>
+                <path d="M0,430 L118,414 L236,396 L354,381 L472,354 L590,336 L708,304 L826,278 L944,250 L1062,221 L1180,194" stroke="#3A414B" stroke-width="2" stroke-dasharray="7 6" fill="none"></path>
+                <path d="M0,432 L118,411 L236,386 L354,354 L472,314 L590,268 L708,221 L826,172 L944,126 L1062,81 L1180,37" stroke="#FF5964" stroke-width="2.5" fill="none"></path>
+                <path d="M0,432 L118,419 L236,403 L354,394 L472,371 L590,360 L708,349 L826,344 L944,322 L1062,310 L1180,297" stroke="#FFB000" stroke-width="2.5" fill="none"></path>
+                <circle cx="1180" cy="297" r="5" fill="#FFB000"></circle>
+                <circle cx="1180" cy="37" r="5" fill="#FF5964"></circle>
+                <g fill="#FF5964"><path d="M354,406 l7,-12 h-14 z"></path><path d="M590,372 l7,-12 h-14 z"></path><path d="M708,361 l7,-12 h-14 z"></path><path d="M826,356 l7,-12 h-14 z"></path><path d="M944,334 l7,-12 h-14 z"></path><path d="M1120,322 l7,-12 h-14 z"></path></g>
+              </svg>
+              <div style="position:absolute;left:0;right:0;bottom:-4px;display:flex;justify-content:space-between;font-size:10px;letter-spacing:.16em;color:#2A3038;font-variant-numeric:tabular-nums"><span>02</span><span>06</span><span>10</span><span>14</span><span>18</span><span>MIN 22</span></div>
+              <div style="position:absolute;right:8px;top:0;text-align:right"><div style="font-family:'Chakra Petch',sans-serif;font-size:36px;font-weight:700;color:#FF5964;font-variant-numeric:tabular-nums">−8.5k</div><div style="font-size:10px;letter-spacing:.2em;color:#4A525E">GAP · GROWING 410/MIN</div></div>
+              <div style="position:absolute;left:24%;bottom:12%;max-width:320px;border-left:2px solid #FF5964;padding:2px 0 2px 14px"><div style="font-size:10px;letter-spacing:.22em;color:#FF5964">▲ = YOUR DEATHS</div><div style="font-family:Inter,sans-serif;font-size:14px;line-height:1.5;color:#C9D1DA;margin-top:5px">Every flat segment of your curve starts at a death. Alive, your slope matches the median — <b>the gap is death time, not farm skill.</b></div></div>
+            </div>
+          </div>
+
+          <!-- 05 MAP + 06 BUILD + 07 THREAT -->
+          <div style="display:grid;grid-template-columns:400px minmax(0,1fr) 420px;min-height:0">
+            <div style="border-right:1px solid #21252B;padding:16px 26px;display:flex;flex-direction:column;align-items:center;gap:8px">
+              <div style="font-size:11px;letter-spacing:.26em;color:#4A525E;align-self:flex-start">05 · MAP DISCIPLINE</div>
+              <div style="position:relative;width:186px;height:186px;flex:none">
+                <svg viewBox="0 0 230 230" style="position:absolute;inset:0;width:100%;height:100%">
+                  <rect x="1" y="1" width="228" height="228" fill="none" stroke="#21252B" stroke-width="1"></rect>
+                  <path d="M4,226 L226,4" stroke="#2A3B4D" stroke-width="10" opacity=".5"></path>
+                  <path d="M0,230 L115,115" stroke="#171A1F" stroke-width="1"></path>
+                  <path d="M115,115 L230,0" stroke="#171A1F" stroke-width="1"></path>
+                  <polygon points="1,1 229,1 1,229" fill="#FFB000" opacity=".07"></polygon>
+                  <polygon points="1,1 115,1 1,115" fill="#FFB000" opacity=".09"></polygon>
+                  <circle cx="172" cy="44" r="9" fill="none" stroke="#F5C518" stroke-width="1.5"></circle>
+                  <g fill="#FF5964"><path d="M118,102 l6,-10 h-12 z"></path><path d="M138,86 l6,-10 h-12 z"></path><path d="M96,128 l6,-10 h-12 z"></path><path d="M60,178 l6,-10 h-12 z"></path><path d="M170,120 l6,-10 h-12 z"></path><path d="M50,60 l6,-10 h-12 z"></path><path d="M188,168 l6,-10 h-12 z"></path></g>
+                  <circle cx="46" cy="46" r="5" fill="none" stroke="#FFB000" stroke-width="1.5"><animate attributeName="r" values="4;7;4" dur="2.4s" repeatCount="indefinite"></animate></circle>
+                </svg>
+                <span style="position:absolute;left:8px;top:6px;font-size:9px;letter-spacing:.22em;color:#FFB000">YOUR WORLD</span>
+                <span style="position:absolute;right:6px;bottom:6px;font-size:9px;letter-spacing:.22em;color:#2A3038">THEIR MAP</span>
+                <span style="position:absolute;right:34px;top:24px;font-size:9px;letter-spacing:.18em;color:#F5C518">ROSH</span>
+              </div>
+              <div style="font-family:Inter,sans-serif;font-size:13px;line-height:1.5;color:#7E8896;text-align:center;max-width:320px">▲ 7 deaths — 5 below the river. Until Blade Mail the board only pays you <b style="color:#C9D1DA">above the line.</b></div>
+            </div>
+
+            <!-- 06 BUILD — THIS GAME -->
+            <div style="border-right:1px solid #21252B;padding:16px 30px;display:flex;flex-direction:column">
+              <div style="display:flex;justify-content:space-between"><span style="font-size:11px;letter-spacing:.26em;color:#4A525E">06 · BUILD — THIS GAME</span><span style="font-size:10px;letter-spacing:.18em;color:#2A3038">STRATZ · CRUSADER P3 · N=2.4k</span></div>
+              <div style="display:flex;align-items:center;gap:14px;margin-top:14px">
+                <img src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/items/blade_mail.png" alt="Blade Mail" style="width:44px;height:32px;display:block">
+                <div style="min-width:0;flex:1">
+                  <div style="font-size:15px;font-family:Inter,sans-serif;font-weight:600;color:#EDF1F6">Blade Mail <span style="font-size:12px;color:#FFB000;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em">— NEXT · {{ gold }}/2100</span></div>
+                  <div style="font-size:13px;font-family:Inter,sans-serif;color:#7E8896;line-height:1.4">your call stands — reflect answers their dive</div>
+                </div>
+                <span style="color:#2A3038;font-size:16px">→</span>
+                <img src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/items/blink.png" alt="Blink" style="width:44px;height:32px;display:block;opacity:.75">
+                <div style="min-width:0;flex:1">
+                  <div style="font-size:15px;font-family:Inter,sans-serif;font-weight:600;color:#C9D1DA">Blink after <span style="font-size:12px;color:#4A525E;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em">67% WR HERE</span></div>
+                  <div style="font-size:13px;font-family:Inter,sans-serif;color:#7E8896;line-height:1.4">standard for winning Axe games this bracket</div>
+                </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;margin:14px 0 10px"><span style="font-size:10px;letter-spacing:.22em;color:#F5C518;white-space:nowrap">IF IT GOES PAST 35:00 · THIS LINEUP</span><span style="flex:1;height:1px;background:#171A1F"></span></div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
+                <div style="display:flex;gap:12px;padding-right:20px;border-right:1px solid #171A1F">
+                  <img src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/items/crimson_guard.png" alt="Crimson Guard" style="width:40px;height:29px;display:block;flex:none">
+                  <div style="font-size:13px;font-family:Inter,sans-serif;line-height:1.45;color:#7E8896;min-width:0"><b style="color:#EDF1F6">Crimson over AC.</b> 4 of 5 Dire deal physical — and it covers your Medusa too.</div>
+                </div>
+                <div style="display:flex;gap:12px;padding-left:20px">
+                  <img src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/items/aeon_disk.png" alt="Aeon Disk" style="width:40px;height:29px;display:block;flex:none">
+                  <div style="font-size:13px;font-family:Inter,sans-serif;line-height:1.45;color:#7E8896;min-width:0"><b style="color:#EDF1F6">Aeon if Storm keeps opening on you.</b> Their kills are pick-offs, not teamfights.</div>
+                </div>
+              </div>
+              <div style="margin-top:auto;font-size:11px;letter-spacing:.14em;color:#4A525E;font-family:'IBM Plex Mono',monospace">RE-EVALUATES ON ENEMY ITEM INTEL · LAST 22:41</div>
+            </div>
+
+            <!-- 07 PRIMARY THREAT -->
+            <div style="padding:16px 28px;display:flex;flex-direction:column">
+              <div style="display:flex;justify-content:space-between"><span style="font-size:11px;letter-spacing:.26em;color:#4A525E">07 · PRIMARY THREAT</span><span style="font-size:10px;letter-spacing:.18em;color:#FF5964">INTEL ~2m OLD</span></div>
+              <div style="display:flex;align-items:center;gap:14px;margin-top:14px">
+                <img src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/antimage.png" alt="Anti-Mage" style="width:76px;height:43px;display:block">
+                <div>
+                  <div style="font-family:'Chakra Petch',sans-serif;font-size:20px;font-weight:700;color:#EDF1F6">ANTI-MAGE <span style="font-size:13px;color:#FF5964;font-variant-numeric:tabular-nums">LV 18 · 16.4k</span></div>
+                  <div style="display:flex;gap:4px;margin-top:6px">
+                    <img src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/items/bfury.png" alt="Battle Fury" style="width:30px;height:22px;display:block">
+                    <img src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/items/manta.png" alt="Manta" style="width:30px;height:22px;display:block">
+                    <img src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/items/power_treads.png" alt="Treads" style="width:30px;height:22px;display:block">
+                    <img src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/items/wraith_band.png" alt="Wraith Band" style="width:30px;height:22px;display:block;opacity:.6">
+                    <img src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/items/magic_wand.png" alt="Wand" style="width:30px;height:22px;display:block;opacity:.6">
+                  </div>
+                </div>
+              </div>
+              <div style="font-family:Inter,sans-serif;font-size:14px;line-height:1.55;color:#7E8896;margin-top:12px;border-top:1px solid #171A1F;padding-top:10px">Next spike: <b style="color:#C9D1DA">Basher ≈ min 27.</b> He manta-dodges targeted calls — <span style="color:#FFB000">reflect is the counter you're building.</span></div>
+              <div style="margin-top:auto;display:flex;justify-content:space-between;font-size:10.5px;letter-spacing:.1em;color:#4A525E;font-variant-numeric:tabular-nums"><span>STORM 11.8k · TIDE 8.9k · RUBICK 7.3k · WD 6.1k</span><span style="color:#2A3038">BOT ✓</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── 07 TAPE ── -->
+      <div style="border-top:1px solid #21252B;padding:18px 36px 0;background:#08090B;position:relative">
+        <div style="display:flex;justify-content:space-between;font-size:11px;letter-spacing:.26em;color:#4A525E"><span>08 · TAPE — NEXT 180 SECONDS</span><span style="font-variant-numeric:tabular-nums">NOW T+{{ clock }}</span></div>
+        <div style="position:relative;height:84px;margin-top:14px">
+          <div style="position:absolute;left:0;right:0;top:38px;height:1px;background:#21252B"></div>
+          <div style="position:absolute;left:0;right:0;top:32px;height:13px;background:repeating-linear-gradient(90deg,#21252B 0 1px,transparent 1px 30.6px)"></div>
+          <div style="position:absolute;left:0;top:26px;width:2px;height:25px;background:#FFB000"></div>
+          <div style="position:absolute;left:0;top:58px;font-size:10px;letter-spacing:.18em;color:#FFB000">NOW</div>
+          <!-- rosh: pending vs open -->
+          <sc-if value="{{ roshPending }}" hint-placeholder-val="{{ true }}">
+            <div style="position:absolute;left:{{ roshPct }}%;right:0;top:38px;height:1px;background:linear-gradient(90deg,#F5C51888,transparent)"></div>
+            <div style="position:absolute;left:{{ roshPct }}%;top:30px;width:1px;height:17px;background:#F5C518"></div>
+            <div style="position:absolute;left:{{ roshPct }}%;top:8px;font-size:11px;letter-spacing:.12em;color:#F5C518;white-space:nowrap;font-variant-numeric:tabular-nums;transform:{{ roshShift }}">ROSH WINDOW {{ roshIn }}</div>
+          </sc-if>
+          <sc-if value="{{ roshOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;left:0;right:0;top:38px;height:1px;background:linear-gradient(90deg,#FF5964aa,transparent)"></div>
+            <div style="position:absolute;left:0;top:8px;font-size:11px;letter-spacing:.18em;color:#FF5964;display:flex;align-items:center;gap:8px"><span style="width:7px;height:7px;background:#FF5964;animation:ping-d 1.6s ease-out infinite"></span>ROSH WINDOW OPEN — STAY NORTH UNLESS 3 COMMIT</div>
+          </sc-if>
+          <div style="position:absolute;left:{{ stackPct }}%;top:30px;width:1px;height:17px;background:#5AA9FF"></div>
+          <div style="position:absolute;left:{{ stackPct }}%;top:58px;font-size:11px;letter-spacing:.12em;color:#5AA9FF;white-space:nowrap;font-variant-numeric:tabular-nums">STACK {{ stackIn }}</div>
+          <div style="position:absolute;left:{{ runePct }}%;top:30px;width:1px;height:17px;background:#5AA9FF;opacity:.7"></div>
+          <div style="position:absolute;left:{{ runePct }}%;top:8px;font-size:11px;letter-spacing:.12em;color:#5AA9FF;white-space:nowrap;font-variant-numeric:tabular-nums;opacity:.8;transform:{{ runeShift }}">RUNE {{ runeIn }}</div>
+          <sc-if value="{{ bmNotDone }}" hint-placeholder-val="{{ true }}">
+            <div style="position:absolute;left:{{ bmPct }}%;top:30px;width:1px;height:17px;background:#FFB000"></div>
+            <div style="position:absolute;left:{{ bmPct }}%;top:58px;font-size:11px;letter-spacing:.12em;color:#FFB000;white-space:nowrap;font-variant-numeric:tabular-nums;transform:{{ bmShift }}">BLADE MAIL ≈{{ bmEta }}</div>
+          </sc-if>
+          <sc-if value="{{ aegisVisible }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;left:{{ aegisPct }}%;top:30px;width:1px;height:17px;background:#FF5964;opacity:.8"></div>
+            <div style="position:absolute;left:{{ aegisPct }}%;top:8px;font-size:11px;letter-spacing:.12em;color:#FF5964;white-space:nowrap;font-variant-numeric:tabular-nums;opacity:.9;transform:{{ aegisShift }}">AEGIS RISK PEAK {{ aegisIn }}</div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;liveSim&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;section&quot;:&quot;Simulation&quot;,&quot;tsType&quot;:&quot;boolean&quot;},&quot;simSpeed&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:1,&quot;min&quot;:1,&quot;max&quot;:20,&quot;step&quot;:1,&quot;unit&quot;:&quot;×&quot;,&quot;section&quot;:&quot;Simulation&quot;,&quot;tsType&quot;:&quot;number&quot;}}">
+class Component extends DCLogic {
+  state = { t: 0, scale: 0.45 };
+
+  componentDidMount() {
+    this._fit = () => {
+      const w = window.innerWidth, h = window.innerHeight;
+      this.setState({ scale: Math.min(Math.min((w - 24) / 1920, (h - 24) / 1080), 1) });
+    };
+    this._fit();
+    window.addEventListener('resize', this._fit);
+    this._iv = setInterval(() => {
+      if (this.props.liveSim === false) return;
+      const sp = this.props.simSpeed ?? 1;
+      this.setState(s => ({ t: s.t + sp }));
+    }, 1000);
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener('resize', this._fit);
+    clearInterval(this._iv);
+  }
+
+  fmt(sec) {
+    sec = Math.max(0, Math.round(sec));
+    const m = Math.floor(sec / 60), s = sec % 60;
+    return m + ':' + String(s).padStart(2, '0');
+  }
+
+  renderVals() {
+    const base = 22 * 60 + 54;              // 22:54
+    const now = base + this.state.t;
+    const gold = Math.min(Math.round(1385 + 7 * this.state.t), 9999);
+    const bmDone = gold >= 2100;
+    const bmEtaSec = bmDone ? 0 : (2100 - gold) / 7;
+    const roshT = 23 * 60 + 45;             // window opens 23:45
+    const roshIn = roshT - now;
+    const stackIn = (53 - (now % 60) + 60) % 60;
+    const runeIn = now < 1440 ? 1440 - now : 120 - ((now - 1440) % 120);
+    const aegisIn = Math.max(0, (26 * 60 + 30) - now);
+    const pct = (secs) => Math.max(0, Math.min(100, (secs / 180) * 100)).toFixed(2);
+    // Right-anchor labels near the tape's right edge so they never clip.
+    const shift = (secs) => ((secs / 180) * 100 > 82 ? 'translateX(-100%)' : 'none');
+
+    return {
+      stageScale: this.state.scale,
+      clock: this.fmt(now),
+      gold: gold,
+      goldPct: Math.min(100, (gold / 2100) * 100).toFixed(1),
+      bmDone: bmDone,
+      bmNotDone: !bmDone,
+      bmEta: this.fmt(bmEtaSec),
+      bmEtaLabel: bmDone ? 'COMPLETE — SHOP ON NEXT BACK' : ('\u2212' + (2100 - gold) + ' \u00b7 \u2248' + this.fmt(bmEtaSec)),
+      bmPct: pct(bmEtaSec),
+      roshPending: roshIn > 0,
+      roshOpen: roshIn <= 0,
+      roshIn: this.fmt(roshIn),
+      roshPct: pct(roshIn),
+      stackIn: ':' + String(stackIn).padStart(2, '0'),
+      stackPct: pct(stackIn),
+      runeIn: this.fmt(runeIn),
+      runePct: pct(runeIn),
+      aegisIn: this.fmt(aegisIn),
+      aegisPct: pct(aegisIn),
+      aegisVisible: aegisIn > 0 && aegisIn <= 175,
+      aegisShift: shift(aegisIn),
+      runeShift: shift(runeIn),
+      bmShift: shift(bmEtaSec),
+      roshShift: shift(roshIn),
+    };
+  }
+}
+</script>
+</body>
+</html>
