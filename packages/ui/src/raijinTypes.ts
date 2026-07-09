@@ -29,9 +29,54 @@ export interface HeroData {
     enemy_heroes: string[];
     allied_heroes: string[];
     my_team: string;
+    // Wave 2 additive fields (engine ≥ feat/raijin-maxout) — render-if-present.
+    /** True net worth from GSI (replaces the gold-earned proxy when present). */
+    net_worth?: number;
+    /** World coordinates from GSI — feed Zone 05's player dot. */
+    xpos?: number;
+    ypos?: number;
+    /** Buyback state — Zone 01 endgame line. */
+    buyback_cost?: number;
+    buyback_cooldown?: number;
 }
 
 export type RecUrgency = 'CRITICAL' | 'IMPORTANT' | 'ROUTINE';
+
+/** Trade-ledger death verdicts (Wave 2 — `Recommendation.meta.verdict`). */
+export type DeathVerdict = 'TRADE' | 'EVEN_TRADE' | 'FIGHT_DEATH' | 'CAUGHT';
+
+/** Structured ITEM-rec fields (bracket-filtered STRATZ, engine-supplied). */
+export interface ItemRecMeta {
+    /** CDN slug, e.g. "black_king_bar". */
+    item?: string;
+    cost?: number;
+    median_minute?: number;
+    win_rate?: number;
+    matches?: number;
+    share?: number;
+}
+
+/** Trade-ledger block on death recs. */
+export interface DeathRecMeta {
+    verdict?: DeathVerdict;
+    net?: number;
+    own_kills?: number;
+    assists?: number;
+    team_for?: number;
+    team_against?: number;
+    x?: number;
+    y?: number;
+    respawn?: number;
+}
+
+/** Latency honesty on LLM recs. */
+export interface LlmRecMeta {
+    latency_ms?: number;
+    delivered_alive?: boolean;
+}
+
+/** Additive per-rec metadata — engine populates the block matching the rec kind. */
+export type RecMeta = ItemRecMeta & DeathRecMeta & LlmRecMeta & Record<string, unknown>;
 
 export interface Recommendation {
     category: 'ITEM' | 'SKILL' | 'TIMER' | 'FIGHT' | 'GENERAL';
@@ -49,6 +94,8 @@ export interface Recommendation {
     tts_text?: string;
     /** Optional tag list — used by the UI for tag-based filtering (e.g. 'knowledge', 'phase'). */
     tags?: string[];
+    /** Wave 2: additive structured metadata (item stats / death ledger / LLM latency). */
+    meta?: RecMeta;
 }
 
 /**
@@ -92,9 +139,40 @@ export interface UIUpdate {
         | 'settings_update'
         | 'post_game_update'    // v4.1.1: async narrative / OpenDota result landed
         | 'timers'              // v6: timer-rail state (absolute clock values)
-        | 'stance';             // v6: FARM/FIGHT/PUSH stance banner
+        | 'stance'              // v6: FARM/FIGHT/PUSH stance banner
+        | 'gap_baseline'        // Wave 2: reference curves for Zone 04 (honest sources)
+        | 'winnability';        // Wave 2: P(win) from the offline bracket table
     data: Record<string, unknown>;
     timestamp: number;
+}
+
+/** Wave 2 — Zone 04 reference series. Every array is minute-indexed from 0;
+ *  absent/null arrays mean that source has no data (render nothing). */
+export interface GapBaselineData {
+    source: string;
+    /** Personal median net worth by minute (own Stratz match cache). */
+    nw_by_minute?: number[] | null;
+    /** Bracket-average ghost curve for this hero+position. */
+    ghost_nw_by_minute?: number[] | null;
+    ghost_cs_by_minute?: number[] | null;
+    ghost_deaths_by_minute?: number[] | null;
+    /** Honest legend label for the ghost, e.g. "CRUSADER P3 AXE AVG". */
+    ghost_label?: string | null;
+    /** Per-minute team gold advantage (GC bot) — null until the bot delivers. */
+    team_graph_gold?: number[] | null;
+    labels?: Record<string, string>;
+}
+
+/** Wave 2 — anti-tilt win probability. Absent message = sample too thin;
+ *  the UI must render nothing rather than a fake number. */
+export interface WinnabilityData {
+    p_win: number;
+    input: string;
+    kill_diff?: number;
+    clock?: number;
+    n?: number;
+    comeback_pct?: number;
+    hint?: string;
 }
 
 /** v6: stance-engine decision rendered by RaijinStanceBanner. */
@@ -129,9 +207,13 @@ export interface EnemyPlayerData {
     assists: number;
     items: string[];    // up to 6 item keys
     net_worth: number;
-    ultimate_state: number;    // always 0 (not available from API)
-    ultimate_cooldown: number; // always 0
-    respawn_timer: number;     // always 0
+    /** Wave 2: enemy farm rate (GC deep parse) — absent on older engines. */
+    last_hits?: number;
+    denies?: number;
+    /** Stub fields — the engine nulls these (never real); do not render. */
+    ultimate_state?: number | null;
+    ultimate_cooldown?: number | null;
+    respawn_timer?: number | null;
 }
 
 /** Full match intel from GC Bot, broadcast every ~8s. */

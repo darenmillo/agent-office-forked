@@ -173,3 +173,115 @@ describe('tape events', () => {
         expect(deriveTapeEvents(null, 0, null)).toEqual([]);
     });
 });
+
+// ── Wave 2 additions ───────────────────────────────────────────────────
+import {
+    llmKind, verdictBadge, winnabilityTone, fmtPct,
+    checkinNext, CheckinState, CHECKIN_TIMEOUT_MS,
+    worldToMap, baselinePoints,
+} from './console';
+
+describe('llmKind', () => {
+    test('classifies by tags; rule recs are null', () => {
+        expect(llmKind(rec({ tags: ['llm', 'ambient'] }))).toBe('ambient');
+        expect(llmKind(rec({ tags: ['llm', 'checkin'] }))).toBe('checkin');
+        expect(llmKind(rec({ tags: ['llm', 'closing'] }))).toBe('closing');
+        expect(llmKind(rec({ tags: ['death', 'llm', 'analysis'] }))).toBe('death-analysis');
+        expect(llmKind(rec({ tags: ['llm'] }))).toBeNull();
+        expect(llmKind(rec({ tags: ['death'] }))).toBeNull();
+        expect(llmKind(rec({}))).toBeNull();
+    });
+});
+
+describe('verdictBadge', () => {
+    test('TRADE is radiant — a won trade is never rendered as danger', () => {
+        expect(verdictBadge('TRADE')).toEqual({ label: 'TRADE WON', tone: 'radiant' });
+    });
+    test('full mapping + unknown renders nothing', () => {
+        expect(verdictBadge('EVEN_TRADE')?.tone).toBe('blue');
+        expect(verdictBadge('FIGHT_DEATH')?.tone).toBe('amber');
+        expect(verdictBadge('CAUGHT')?.tone).toBe('dire');
+        expect(verdictBadge('WHATEVER')).toBeNull();
+        expect(verdictBadge(undefined)).toBeNull();
+    });
+});
+
+describe('winnability', () => {
+    test('tone bands', () => {
+        expect(winnabilityTone(0.1)).toBe('dire');
+        expect(winnabilityTone(0.349)).toBe('dire');
+        expect(winnabilityTone(0.35)).toBe('amber');
+        expect(winnabilityTone(0.549)).toBe('amber');
+        expect(winnabilityTone(0.55)).toBe('radiant');
+        expect(winnabilityTone(0.9)).toBe('radiant');
+    });
+    test('fmtPct clamps and rounds', () => {
+        expect(fmtPct(0.19)).toBe('19%');
+        expect(fmtPct(1.4)).toBe('100%');
+        expect(fmtPct(-0.2)).toBe('0%');
+    });
+});
+
+describe('checkinNext', () => {
+    const idle: CheckinState = { phase: 'idle', queuedAt: null };
+    test('fire → queued; double-fire is a no-op', () => {
+        const q = checkinNext(idle, { type: 'fire', now: 1000 });
+        expect(q).toEqual({ phase: 'queued', queuedAt: 1000 });
+        expect(checkinNext(q, { type: 'fire', now: 2000 })).toBe(q);
+    });
+    test('landed/error return to idle', () => {
+        const q = checkinNext(idle, { type: 'fire', now: 1000 });
+        expect(checkinNext(q, { type: 'landed' }).phase).toBe('idle');
+        expect(checkinNext(q, { type: 'error' }).phase).toBe('idle');
+    });
+    test('tick times the queue out at 90s — the button never wedges', () => {
+        const q = checkinNext(idle, { type: 'fire', now: 1000 });
+        expect(checkinNext(q, { type: 'tick', now: 1000 + CHECKIN_TIMEOUT_MS }).phase).toBe('queued');
+        expect(checkinNext(q, { type: 'tick', now: 1001 + CHECKIN_TIMEOUT_MS }).phase).toBe('idle');
+    });
+});
+
+describe('worldToMap', () => {
+    test('center maps to center, y inverted', () => {
+        expect(worldToMap(0, 0, 230)).toEqual({ x: 115, y: 115 });
+        const topRight = worldToMap(8500, 8500, 230);
+        expect(topRight.x).toBe(230);
+        expect(topRight.y).toBe(0);
+        const bottomLeft = worldToMap(-8500, -8500, 230);
+        expect(bottomLeft.x).toBe(0);
+        expect(bottomLeft.y).toBe(230);
+    });
+    test('out-of-range clamps to the frame', () => {
+        expect(worldToMap(99999, -99999, 100)).toEqual({ x: 100, y: 100 });
+    });
+});
+
+describe('baselinePoints', () => {
+    test('skips nulls, keeps minute indices', () => {
+        expect(baselinePoints([0, 320, null as unknown as number, 900])).toEqual([
+            { min: 0, value: 0 }, { min: 1, value: 320 }, { min: 3, value: 900 },
+        ]);
+        expect(baselinePoints(null)).toEqual([]);
+        expect(baselinePoints(undefined)).toEqual([]);
+    });
+});
+
+describe('extractGoldTarget meta-first', () => {
+    test('meta.cost beats the text regex and yields the slug', () => {
+        const r = rec({
+            title: 'Black King Bar',
+            body: 'Get BKB for 9999g',
+            meta: { item: 'black_king_bar', cost: 4050 },
+        });
+        const t = extractGoldTarget([r], 1_000_000);
+        expect(t).not.toBeNull();
+        expect(t!.cost).toBe(4050);
+        expect(t!.slug).toBe('black_king_bar');
+    });
+    test('falls back to the rec text when meta is absent', () => {
+        const r = rec({ title: 'Blade Mail', body: 'Blade Mail — 2100g next' });
+        const t = extractGoldTarget([r], 1_000_000);
+        expect(t!.cost).toBe(2100);
+        expect(t!.slug).toBeUndefined();
+    });
+});

@@ -5,7 +5,7 @@
  * series only accumulates values that arrived over the wire, and tape events
  * are derived from the same TimerRailData the old rail rendered.
  */
-import { Recommendation, TimerRailData } from './raijinTypes';
+import { DeathVerdict, Recommendation, TimerRailData } from './raijinTypes';
 import { ageWindow } from './pacing';
 
 export const TAPE_HORIZON_S = 180;
@@ -49,17 +49,21 @@ export function extrapolatedClock(
 export interface GoldTarget {
     /** Item/directive label straight from the rec title. */
     label: string;
-    /** Gold cost parsed from the rec's own text — never a hardcoded price. */
+    /** Gold cost from the rec's meta (preferred) or its own text — never hardcoded. */
     cost: number;
     /** category|title key of the source rec. */
     recKey: string;
+    /** CDN item slug when the engine supplied structured meta. */
+    slug?: string;
 }
 
 const COST_RE = /(\d{3,5})\s*(?:g|gold)\b/i;
 
-/** Track the top fresh ITEM rec; a gold target exists ONLY when the rec's own
- *  text states a cost (e.g. "Blade Mail — 2100g"). No cost in the text → null
- *  (the progress instrument degrades to a plain gold readout). */
+/** Track the top fresh ITEM rec. Wave 2: the engine's structured `meta.cost`
+ *  is authoritative when present (also yields the CDN slug); the regex over
+ *  the rec's own text remains as the fallback for meta-less engines. A gold
+ *  target still only exists when the rec itself stated a cost — no invented
+ *  prices, ever. */
 export function extractGoldTarget(
     recs: Recommendation[],
     nowMs: number,
@@ -69,6 +73,15 @@ export function extractGoldTarget(
         .filter(r => nowMs - (r.receivedAt ?? nowMs) < ageWindow(r))
         .sort((a, b) => b.priority - a.priority || (b.receivedAt ?? 0) - (a.receivedAt ?? 0));
     for (const rec of items) {
+        const metaCost = typeof rec.meta?.cost === 'number' ? rec.meta.cost : null;
+        if (metaCost !== null && metaCost >= 100) {
+            return {
+                label: rec.title,
+                cost: metaCost,
+                recKey: `${rec.category}|${rec.title}`,
+                slug: typeof rec.meta?.item === 'string' ? rec.meta.item : undefined,
+            };
+        }
         const text = `${rec.title} ${rec.reason ?? ''} ${rec.body}`;
         const m = COST_RE.exec(text);
         if (m) {
@@ -240,4 +253,108 @@ export function deriveTapeEvents(
     return events
         .filter(e => tapeEventVisible(e.secondsUntil))
         .sort((a, b) => a.secondsUntil - b.secondsUntil);
+}
+
+// ── Wave 2: LLM read kinds, death verdicts, winnability, CHECK-IN ──────
+
+export type LlmKind = 'ambient' | 'checkin' | 'closing' | 'death-analysis';
+
+/** Classify an LLM rec by its tags; null for rule-based recs. */
+export function llmKind(rec: Recommendation): LlmKind | null {
+    const tags = rec.tags ?? [];
+    if (!tags.includes('llm')) return null;
+    if (tags.includes('death') && tags.includes('analysis')) return 'death-analysis';
+    if (tags.includes('checkin')) return 'checkin';
+    if (tags.includes('closing')) return 'closing';
+    if (tags.includes('ambient')) return 'ambient';
+    return null;
+}
+
+export const LLM_KIND_LABEL: Record<LlmKind, string> = {
+    ambient: 'AMBIENT READ',
+    checkin: 'CHECK-IN',
+    closing: 'CLOSING PLAN',
+    'death-analysis': 'DEATH READ',
+};
+
+export interface VerdictBadge {
+    label: string;
+    /** console_ token name — TRADE is a win, never dire. */
+    tone: 'radiant' | 'blue' | 'amber' | 'dire';
+}
+
+/** Trade-ledger verdict → badge. Unknown strings render nothing. */
+export function verdictBadge(verdict: string | undefined | null): VerdictBadge | null {
+    switch (verdict as DeathVerdict | undefined | null) {
+        case 'TRADE': return { label: 'TRADE WON', tone: 'radiant' };
+        case 'EVEN_TRADE': return { label: 'EVEN TRADE', tone: 'blue' };
+        case 'FIGHT_DEATH': return { label: 'FIGHT DEATH', tone: 'amber' };
+        case 'CAUGHT': return { label: 'CAUGHT', tone: 'dire' };
+        default: return null;
+    }
+}
+
+/** Winnability chip tone — informational, one alarm at a time (never pings). */
+export function winnabilityTone(pWin: number): 'dire' | 'amber' | 'radiant' {
+    if (pWin < 0.35) return 'dire';
+    if (pWin < 0.55) return 'amber';
+    return 'radiant';
+}
+
+export function fmtPct(p: number): string {
+    return `${Math.round(Math.max(0, Math.min(1, p)) * 100)}%`;
+}
+
+/** CHECK-IN request lifecycle. `queued` flips back to idle when the answer
+ *  rec lands or after the 90s give-up window — the button never wedges. */
+export interface CheckinState {
+    phase: 'idle' | 'queued';
+    queuedAt: number | null;
+}
+
+export const CHECKIN_TIMEOUT_MS = 90_000;
+
+export type CheckinEvent =
+    | { type: 'fire'; now: number }
+    | { type: 'landed' }
+    | { type: 'error' }
+    | { type: 'tick'; now: number };
+
+export function checkinNext(state: CheckinState, ev: CheckinEvent): CheckinState {
+    switch (ev.type) {
+        case 'fire':
+            return state.phase === 'queued' ? state : { phase: 'queued', queuedAt: ev.now };
+        case 'landed':
+        case 'error':
+            return state.phase === 'idle' ? state : { phase: 'idle', queuedAt: null };
+        case 'tick':
+            if (state.phase === 'queued' && state.queuedAt !== null
+                && ev.now - state.queuedAt > CHECKIN_TIMEOUT_MS) {
+                return { phase: 'idle', queuedAt: null };
+            }
+            return state;
+    }
+}
+
+// ── Wave 2: map projection (Zone 05) ───────────────────────────────────
+
+/** Dota world-coordinate extent (both axes; symmetric around 0). */
+export const WORLD_MIN = -8500;
+export const WORLD_MAX = 8500;
+
+/** Project world (x, y) onto a square map of `size` px. Dota's y points up;
+ *  SVG's y points down — inverted here. Out-of-range values clamp to the edge. */
+export function worldToMap(x: number, y: number, size: number): { x: number; y: number } {
+    const norm = (v: number) => Math.max(0, Math.min(1, (v - WORLD_MIN) / (WORLD_MAX - WORLD_MIN)));
+    return { x: norm(x) * size, y: (1 - norm(y)) * size };
+}
+
+/** Minute-indexed baseline array → chart points (nulls/gaps skipped). */
+export function baselinePoints(series: ReadonlyArray<number | null> | null | undefined): Array<{ min: number; value: number }> {
+    if (!series) return [];
+    const out: Array<{ min: number; value: number }> = [];
+    series.forEach((v, i) => {
+        if (typeof v === 'number' && Number.isFinite(v)) out.push({ min: i, value: v });
+    });
+    return out;
 }
