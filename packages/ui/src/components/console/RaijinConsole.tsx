@@ -183,7 +183,13 @@ export function RaijinConsole({
                             borderRight: `1px solid ${console_.line}`,
                             display: 'grid', gridTemplateRows: 'auto auto minmax(0,1fr)', minHeight: 0,
                         }}>
-                            <Zone01Directive action={action} heroData={heroData} goldTarget={goldTarget} />
+                            <Zone01Directive
+                                action={action}
+                                heroData={heroData}
+                                goldTarget={goldTarget}
+                                clock={clock}
+                                nowMs={nowMs}
+                            />
                             <Zone02Stance stance={stance} />
                             <Zone03Log recs={logRecs} clock={clock} nowMs={nowMs} />
                         </div>

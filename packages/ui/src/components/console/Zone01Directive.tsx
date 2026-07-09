@@ -1,21 +1,34 @@
 /** 01 · DIRECTIVE — THE one priority action, WHY-first, with the gold-target
  *  progress instrument. Pick logic is pacing.ts's pickPriorityAction,
- *  unchanged. The progress bar exists ONLY when a real rec stated a cost. */
+ *  unchanged. The progress bar exists ONLY when a real rec stated a cost.
+ *
+ *  CRITICAL takeover (Round-2 B/CUT language): a fresh CRITICAL directive
+ *  gets the red top rule + mono CRITICAL strip + oversized directive. One
+ *  alarm at a time — this zone is the only place the board goes red. */
 import React from 'react';
 import { console_ } from '../../raijinTheme';
 import { HeroData, Recommendation, effectiveUrgency } from '../../raijinTypes';
 import { GoldTarget, goldEtaSeconds, fmtMSS } from '../../console';
-import { ZoneLabel, StatusFlag, tnum } from './shared';
+import { ZoneLabel, StatusFlag, PulseDot, tnum } from './shared';
+
+/** A CRITICAL directive runs at takeover intensity while younger than this. */
+const CUT_FRESH_MS = 30_000;
+/** Buyback instrument appears from this game clock on (noise gate). */
+const BUYBACK_FROM_S = 25 * 60;
 
 interface Props {
     action: Recommendation | null;
     heroData: HeroData;
     goldTarget: GoldTarget | null;
+    clock: number | null;
+    nowMs: number;
 }
 
-export function Zone01Directive({ action, heroData, goldTarget }: Props) {
+export function Zone01Directive({ action, heroData, goldTarget, clock, nowMs }: Props) {
     const urgency = action ? effectiveUrgency(action) : 'ROUTINE';
     const critical = urgency === 'CRITICAL';
+    const cutTakeover = critical && !!action
+        && nowMs - (action.receivedAt ?? 0) < CUT_FRESH_MS;
     const dead = !heroData.alive;
     const gold = heroData.gold;
     const targetReached = !!goldTarget && gold >= goldTarget.cost;
@@ -40,19 +53,42 @@ export function Zone01Directive({ action, heroData, goldTarget }: Props) {
             ? (action.reason || action.body)
             : 'The next read lands here.';
 
+    const buybackCost = typeof heroData.buyback_cost === 'number' ? heroData.buyback_cost : null;
+    const buybackCd = typeof heroData.buyback_cooldown === 'number' ? heroData.buyback_cooldown : 0;
+    const showBuyback = buybackCost !== null && buybackCost > 0
+        && clock !== null && clock >= BUYBACK_FROM_S;
+    const buybackBanked = buybackCost !== null && gold >= buybackCost && buybackCd <= 0;
+
     return (
-        <div style={{ padding: '28px 32px 24px', borderBottom: `1px solid ${console_.line}` }}>
-            <ZoneLabel label="01 · DIRECTIVE" right={flag} />
+        <div style={{
+            padding: '28px 32px 24px',
+            borderBottom: `1px solid ${console_.line}`,
+            borderTop: cutTakeover ? `3px solid ${console_.dire}` : '3px solid transparent',
+            background: cutTakeover ? 'rgba(255,89,100,.04)' : 'transparent',
+            transition: `background 220ms ${console_.ease}`,
+        }}>
+            {cutTakeover ? (
+                <div style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    fontSize: 12, letterSpacing: '.3em', color: console_.dire,
+                    fontFamily: console_.mono,
+                }}>
+                    <PulseDot color={console_.dire} anim="d" />
+                    CRITICAL{action?.category ? ` — ${action.category}` : ''}
+                </div>
+            ) : (
+                <ZoneLabel label="01 · DIRECTIVE" right={flag} />
+            )}
             <div
                 className="console-fade"
                 style={{
                     fontFamily: console_.display,
-                    fontSize: console_.tDirective,
+                    fontSize: cutTakeover ? 64 : console_.tDirective,
                     lineHeight: 1.02,
                     fontWeight: 700,
                     margin: '16px 0 12px',
                     color: critical || dead ? console_.dire : action ? console_.ink : console_.ghost,
-                    letterSpacing: '.005em',
+                    letterSpacing: cutTakeover ? '-.005em' : '.005em',
                     textTransform: 'uppercase',
                     display: '-webkit-box',
                     WebkitLineClamp: 2,
@@ -106,6 +142,21 @@ export function Zone01Directive({ action, heroData, goldTarget }: Props) {
                             width: 1, height: 8,
                             background: targetReached ? console_.radiant : console_.amber,
                         }} />
+                    </div>
+                )}
+                {showBuyback && (
+                    <div style={{
+                        display: 'flex', justifyContent: 'space-between', marginTop: 9,
+                        fontSize: 11, letterSpacing: '.16em', fontFamily: console_.mono, ...tnum,
+                    }}>
+                        <span style={{ color: console_.chrome }}>
+                            BUYBACK <span style={{ color: console_.body }}>{gold}/{buybackCost}G</span>
+                        </span>
+                        <span style={{ color: buybackBanked ? console_.radiant : console_.dire }}>
+                            {buybackCd > 0
+                                ? `ON COOLDOWN ${fmtMSS(buybackCd)}`
+                                : buybackBanked ? 'BANKED — HOLD IT' : 'NOT BANKED — DO NOT DIE'}
+                        </span>
                     </div>
                 )}
             </div>

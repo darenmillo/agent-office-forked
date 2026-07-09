@@ -1,16 +1,50 @@
 /** 06 · BUILD — THIS GAME: the itemization path from live ITEM recs.
  *
- *  Data honesty: the design's STRATZ WR%/N= chips and item icons are OMITTED —
- *  no WS feed carries win rates, and rec titles can't be reliably mapped to
- *  CDN icon slugs (backend ask: structured item fields on ITEM recs). The
- *  path (next → after) and situational pivots are the top live ITEM recs
- *  verbatim, gold progress is the real reading. */
-import React from 'react';
+ *  Data honesty: STRATZ chips (cost / median minute / WR / N) and CDN icons
+ *  render ONLY from the rec's own structured meta — engines without meta
+ *  degrade to the verbatim-text path. WR is informational body text, never
+ *  an alarm color: a 46% item you need is still the right buy. */
+import React, { useState } from 'react';
 import { console_ } from '../../raijinTheme';
-import { Recommendation } from '../../raijinTypes';
+import { ITEM_ICON_CDN, ItemRecMeta, Recommendation } from '../../raijinTypes';
 import { GoldTarget, fmtMSS } from '../../console';
 import { asOf } from '../../raijinTheme';
 import { ZoneLabel, Micro, tnum } from './shared';
+
+/** Icon that removes itself on CDN miss — never a broken-image glyph. */
+function ItemIcon({ slug, size = 24 }: { slug: string; size?: number }) {
+    const [ok, setOk] = useState(true);
+    if (!ok) return null;
+    return (
+        <img
+            src={`${ITEM_ICON_CDN}/${slug}.png`}
+            alt=""
+            aria-hidden
+            onError={() => setOk(false)}
+            style={{ width: Math.round(size * 1.375), height: size, display: 'block', flex: 'none' }}
+        />
+    );
+}
+
+/** Mono stat chips from structured ITEM meta — only real values render. */
+function StatChips({ meta }: { meta: ItemRecMeta }) {
+    const chips: string[] = [];
+    if (typeof meta.cost === 'number') chips.push(`${meta.cost}G`);
+    if (typeof meta.median_minute === 'number') chips.push(`MED ${Math.round(meta.median_minute)}'`);
+    if (typeof meta.win_rate === 'number') chips.push(`${Math.round(meta.win_rate * 100)}% WR`);
+    if (typeof meta.matches === 'number') {
+        chips.push(`N=${meta.matches >= 1000 ? `${(meta.matches / 1000).toFixed(1)}K` : meta.matches}`);
+    }
+    if (!chips.length) return null;
+    return (
+        <span style={{
+            display: 'inline-flex', gap: 10, fontSize: 10.5, letterSpacing: '.1em',
+            color: console_.muted, fontFamily: console_.mono, whiteSpace: 'nowrap', ...tnum,
+        }}>
+            {chips.map(c => <span key={c}>{c}</span>)}
+        </span>
+    );
+}
 
 interface Props {
     itemRecs: Recommendation[];
@@ -29,6 +63,9 @@ export function Zone06Build({ itemRecs, gold, goldTarget, intelReceivedAt, clock
     const intelClock = intelReceivedAt !== null && clock !== null
         ? Math.max(0, clock - (nowMs - intelReceivedAt) / 1000)
         : null;
+    const hasStratz = itemRecs.some(r => typeof r.meta?.win_rate === 'number' || typeof r.meta?.median_minute === 'number');
+    const nextSlug = typeof next?.meta?.item === 'string' ? next.meta.item : null;
+    const afterSlug = typeof after?.meta?.item === 'string' ? after.meta.item : null;
 
     return (
         <div style={{
@@ -36,9 +73,13 @@ export function Zone06Build({ itemRecs, gold, goldTarget, intelReceivedAt, clock
             padding: '16px 30px',
             display: 'flex', flexDirection: 'column', minWidth: 0,
         }}>
-            <ZoneLabel label="06 · BUILD — THIS GAME" right={<Micro>FROM LIVE RECS</Micro>} />
+            <ZoneLabel
+                label="06 · BUILD — THIS GAME"
+                right={<Micro>{hasStratz ? 'STRATZ · YOUR BRACKET' : 'FROM LIVE RECS'}</Micro>}
+            />
             {next ? (
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14, marginTop: 14 }}>
+                    {nextSlug && <ItemIcon slug={nextSlug} size={32} />}
                     <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ fontSize: 15, fontFamily: console_.reading, fontWeight: 600, color: console_.ink }}>
                             {next.title}{' '}
@@ -46,6 +87,7 @@ export function Zone06Build({ itemRecs, gold, goldTarget, intelReceivedAt, clock
                                 — NEXT{goldTarget?.recKey === `ITEM|${next.title}` ? ` · ${gold}/${goldTarget.cost}` : ''}
                             </span>
                         </div>
+                        {next.meta && <div style={{ marginTop: 3 }}><StatChips meta={next.meta} /></div>}
                         <div style={{
                             fontSize: 13, fontFamily: console_.reading, color: console_.muted, lineHeight: 1.4,
                             display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as never, overflow: 'hidden',
@@ -56,15 +98,19 @@ export function Zone06Build({ itemRecs, gold, goldTarget, intelReceivedAt, clock
                     {after && (
                         <>
                             <span style={{ color: console_.ghost, fontSize: 16, flex: 'none' }}>→</span>
-                            <div style={{ minWidth: 0, flex: 1, opacity: 0.75 }}>
-                                <div style={{ fontSize: 15, fontFamily: console_.reading, fontWeight: 600, color: console_.body }}>
-                                    {after.title}
-                                </div>
-                                <div style={{
-                                    fontSize: 13, fontFamily: console_.reading, color: console_.muted, lineHeight: 1.4,
-                                    display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as never, overflow: 'hidden',
-                                }}>
-                                    {after.reason || after.body}
+                            <div style={{ minWidth: 0, flex: 1, opacity: 0.75, display: 'flex', gap: 10 }}>
+                                {afterSlug && <ItemIcon slug={afterSlug} size={24} />}
+                                <div style={{ minWidth: 0 }}>
+                                    <div style={{ fontSize: 15, fontFamily: console_.reading, fontWeight: 600, color: console_.body }}>
+                                        {after.title}
+                                    </div>
+                                    {after.meta && <div style={{ marginTop: 3 }}><StatChips meta={after.meta} /></div>}
+                                    <div style={{
+                                        fontSize: 13, fontFamily: console_.reading, color: console_.muted, lineHeight: 1.4,
+                                        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as never, overflow: 'hidden',
+                                    }}>
+                                        {after.reason || after.body}
+                                    </div>
                                 </div>
                             </div>
                         </>
