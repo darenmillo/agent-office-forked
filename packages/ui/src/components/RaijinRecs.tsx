@@ -880,6 +880,17 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
                 enabled={ttsEnabled}
                 muted={ttsMuted}
                 minUrgency={ttsMinUrgency}
+                ambientLlm={ambientLlm}
+                onAmbientToggle={async next => {
+                    try {
+                        await fetch(`${RAIJIN_API}/api/settings/ambient`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ enabled: next }),
+                        });
+                        setAmbientLlm(next); // optimistic — broadcast reconciles
+                    } catch { /* engine offline — broadcast reconciles later */ }
+                }}
                 onApply={async partial => {
                     try {
                         await fetch(`${RAIJIN_API}/api/settings/tts`, {

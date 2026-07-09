@@ -18,6 +18,9 @@ interface Props {
     muted: boolean;
     minUrgency: RecUrgency;
     onApply: (partial: { enabled?: boolean; muted?: boolean; min_urgency?: RecUrgency }) => Promise<void>;
+    /** Wave 2: ambient Sonnet cadence — null hides the row (older engine). */
+    ambientLlm?: boolean | null;
+    onAmbientToggle?: (enabled: boolean) => Promise<void>;
 }
 
 export function RaijinSettings({
@@ -27,6 +30,8 @@ export function RaijinSettings({
     muted,
     minUrgency,
     onApply,
+    ambientLlm = null,
+    onAmbientToggle,
 }: Props) {
     const [busy, setBusy] = useState(false);
     const [testStatus, setTestStatus] = useState<string | null>(null);
@@ -192,6 +197,39 @@ export function RaijinSettings({
                         {enabled ? 'ON' : 'OFF'}
                     </button>
                 </SettingRow>
+
+                {/* Wave 2: ambient LLM cadence toggle */}
+                {ambientLlm !== null && onAmbientToggle && (
+                    <SettingRow
+                        label="Ambient Coach Reads"
+                        description="A strategic Sonnet read every few minutes when the game state actually changed. Toggle off if the cadence gets annoying."
+                    >
+                        <button
+                            onClick={async () => {
+                                setBusy(true);
+                                try { await onAmbientToggle(!ambientLlm); } finally { setBusy(false); }
+                            }}
+                            disabled={busy}
+                            aria-pressed={ambientLlm}
+                            style={{
+                                background: ambientLlm ? pip.bgInset : pip.bgDeep,
+                                border: `2px solid ${ambientLlm ? pip.green : pip.amberFaint}`,
+                                color: ambientLlm ? pip.green : pip.amber,
+                                padding: '8px 16px',
+                                fontFamily: pip.font,
+                                fontSize: pip.textBase,
+                                fontWeight: 700,
+                                letterSpacing: 1,
+                                cursor: busy ? 'wait' : 'pointer',
+                                minHeight: 44,
+                                textShadow: ambientLlm ? glowText(pip.green, 4) : undefined,
+                                boxShadow: ambientLlm ? glow(pip.green, 4) : undefined,
+                            }}
+                        >
+                            {ambientLlm ? 'ON' : 'OFF'}
+                        </button>
+                    </SettingRow>
+                )}
 
                 {/* Urgency threshold */}
                 {enabled && (
