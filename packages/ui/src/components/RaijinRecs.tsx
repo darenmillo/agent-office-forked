@@ -824,7 +824,7 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
             <RaijinBriefingRoom
                 visible={serverStatus === 'ready' && !gameEnded}
                 onOpenScouting={() => setScoutingOpen(true)}
-                myTeam={heroData?.my_team ?? null}
+                myTeam={heroDataRef.current?.my_team ?? null}
             />
             {serverStatus !== 'ready' && (
                 <div style={{

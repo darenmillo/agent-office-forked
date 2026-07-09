@@ -229,7 +229,9 @@ export interface EnemyIntelData {
 
 export interface DimensionGrade {
     dimension: 'farming' | 'fighting' | 'objectives' | 'map_awareness' | 'itemization';
-    grade: 'S' | 'A' | 'B' | 'C' | 'D' | 'F';
+    /** '—' = not measured (Track F honesty — e.g. objectives without
+     *  tower-participation data). Render blank score + no bar. */
+    grade: 'S' | 'A' | 'B' | 'C' | 'D' | 'F' | '—';
     score: number;
     callout: string;
 }
