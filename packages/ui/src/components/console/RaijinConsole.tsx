@@ -11,7 +11,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { console_ } from '../../raijinTheme';
 import {
     HeroData, Recommendation, StanceData, TimerRailData,
-    EnemyIntelData, EnemySource,
+    EnemyIntelData, EnemySource, GapBaselineData, WinnabilityData,
 } from '../../raijinTypes';
 import { pickPriorityAction, Role } from '../../pacing';
 import {
@@ -56,12 +56,18 @@ interface Props {
     patchVersion: string | null;
     gapSeries: GapPoint[];
     headerControls?: React.ReactNode;
+    // Wave 2 feeds — all render-if-present.
+    gapBaseline: GapBaselineData | null;
+    winnability: { data: WinnabilityData; receivedAt: number } | null;
+    youIsNetWorth: boolean;
+    deathSpots: Array<{ x: number; y: number }>;
 }
 
 export function RaijinConsole({
     heroData, recs, stance, timerRail, enemyIntel, enemyIntelReceivedAt,
     enemySource, onSourceClick, role, gameEnded, endedAt, lastHeroAt,
     signalLostAt, bracket, patchVersion, gapSeries, headerControls,
+    gapBaseline, winnability, youIsNetWorth, deathSpots,
 }: Props) {
     // Uniform stage scale from the container box.
     const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -182,12 +188,31 @@ export function RaijinConsole({
                             <Zone03Log recs={logRecs} clock={clock} nowMs={nowMs} />
                         </div>
                         <div style={{ display: 'grid', gridTemplateRows: 'minmax(0,1fr) 302px', minHeight: 0 }}>
-                            <Zone04Gap series={gapSeries} threatName={threatName} deaths={heroData.deaths} />
+                            <Zone04Gap
+                                series={gapSeries}
+                                threatName={threatName}
+                                deaths={heroData.deaths}
+                                baseline={gapBaseline}
+                                winnability={
+                                    winnability && nowMs - winnability.receivedAt < 90_000
+                                        ? winnability.data
+                                        : null
+                                }
+                                youIsNetWorth={youIsNetWorth}
+                            />
                             <div style={{
                                 display: 'grid', minHeight: 0,
                                 gridTemplateColumns: compact ? 'minmax(0,1fr)' : '400px minmax(0,1fr) 420px',
                             }}>
-                                {!compact && <Zone05Map deaths={heroData.deaths} />}
+                                {!compact && (
+                                    <Zone05Map
+                                        deaths={heroData.deaths}
+                                        deathSpots={deathSpots}
+                                        heroX={typeof heroData.xpos === 'number' ? heroData.xpos : null}
+                                        heroY={typeof heroData.ypos === 'number' ? heroData.ypos : null}
+                                        alive={heroData.alive}
+                                    />
+                                )}
                                 <Zone06Build
                                     itemRecs={itemRecs}
                                     gold={heroData.gold}

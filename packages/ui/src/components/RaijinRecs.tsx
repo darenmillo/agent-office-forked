@@ -694,6 +694,10 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
                     patchVersion={patchStatus?.engine_version ?? null}
                     gapSeries={gapSeries}
                     headerControls={consoleControls}
+                    gapBaseline={gapBaseline}
+                    winnability={winnability}
+                    youIsNetWorth={youIsNetWorth}
+                    deathSpots={deathSpots}
                 />
             )}
 
