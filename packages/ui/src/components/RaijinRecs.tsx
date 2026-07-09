@@ -827,7 +827,14 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
             )}
 
             {/* Death-timer coaching panel — never over a frozen review board */}
-            {!gameEnded && <RaijinDeathPanel heroData={heroData} recommendations={recs} />}
+            {!gameEnded && (
+                <RaijinDeathPanel
+                    heroData={heroData}
+                    recommendations={recs}
+                    onCheckin={fireCheckin}
+                    checkinQueued={checkin.phase === 'queued'}
+                />
+            )}
 
             {/* Enemy picker modal — manually or auto-triggered */}
             <RaijinEnemyPicker

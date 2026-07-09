@@ -11,14 +11,25 @@
  */
 import React, { useMemo, useState, useEffect } from 'react';
 import { HeroData, Recommendation, effectiveUrgency } from '../raijinTypes';
-import { bcast, bLabel, bNum } from '../raijinTheme';
+import { bcast, bLabel, bNum, console_ } from '../raijinTheme';
+import { verdictBadge } from '../console';
+
+const VERDICT_COLOR = {
+    radiant: bcast.radiant,
+    blue: bcast.blue,
+    amber: console_.amber,
+    dire: bcast.dire,
+} as const;
 
 interface Props {
     heroData: HeroData | null;
     recommendations: Recommendation[];
+    /** Wave 2: dead time is CHECK-IN time — fires the full-read request. */
+    onCheckin?: () => void;
+    checkinQueued?: boolean;
 }
 
-export function RaijinDeathPanel({ heroData, recommendations }: Props) {
+export function RaijinDeathPanel({ heroData, recommendations, onCheckin, checkinQueued }: Props) {
     // Find the Sonnet "coach says" rec separately from the sync _on_death
     // bundle so it renders as the hero line and persists past respawn.
     const { headline, extras, coachSays } = useMemo(() => {
@@ -116,6 +127,21 @@ export function RaijinDeathPanel({ heroData, recommendations }: Props) {
                     <>
                         {/* Respawn numeral + gold — the two numbers that matter while dead */}
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: 20 }}>
+                            {(() => {
+                                const badge = verdictBadge(headline?.meta?.verdict as string);
+                                return badge ? (
+                                    <span style={{
+                                        position: 'absolute', top: 14, right: 16,
+                                        fontSize: 10, letterSpacing: '.2em',
+                                        fontFamily: console_.mono,
+                                        color: VERDICT_COLOR[badge.tone],
+                                        border: `1px solid ${VERDICT_COLOR[badge.tone]}55`,
+                                        padding: '2px 7px',
+                                    }}>
+                                        {badge.label}
+                                    </span>
+                                ) : null;
+                            })()}
                             <div>
                                 <div style={{ ...bLabel, color: bcast.dire }}>Respawn</div>
                                 <div style={{
@@ -179,6 +205,26 @@ export function RaijinDeathPanel({ heroData, recommendations }: Props) {
                                     </div>
                                 ))}
                             </div>
+                        )}
+
+                        {/* Dead time is reading time — the full check-in read is one tap away. */}
+                        {onCheckin && respawn >= 15 && (
+                            <button
+                                onClick={onCheckin}
+                                disabled={checkinQueued}
+                                style={{
+                                    marginTop: 12,
+                                    background: 'transparent',
+                                    border: `1px solid ${checkinQueued ? bcast.line : console_.phos}`,
+                                    color: checkinQueued ? bcast.muted : console_.phosInk,
+                                    fontFamily: console_.mono,
+                                    fontSize: 11, letterSpacing: '.18em',
+                                    padding: '6px 12px',
+                                    cursor: checkinQueued ? 'wait' : 'pointer',
+                                }}
+                            >
+                                {checkinQueued ? 'READING…' : 'CHECK-IN — WHAT NOW?'}
+                            </button>
                         )}
                     </>
                 ) : (

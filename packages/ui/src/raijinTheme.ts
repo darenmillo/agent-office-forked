@@ -36,6 +36,13 @@ export const console_ = {
     stanceFight: '#FF6A3D',
     stancePush:  '#F5C518',
 
+    // PHOSPHOR voice (Round-2 C) — reserved for LLM-authored reads only:
+    // the amber-monochrome register marks "the coach speaking" vs rule
+    // instruments. Never used for rule-based content.
+    phosDim: '#6B5A20',
+    phos:    '#D9B96A',
+    phosInk: '#EFE3C0',
+
     // Typography
     display: "'Chakra Petch', 'Bahnschrift', 'Segoe UI', sans-serif",
     mono: "'IBM Plex Mono', ui-monospace, Consolas, monospace", // DEFAULT board font
