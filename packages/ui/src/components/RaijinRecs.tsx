@@ -268,8 +268,23 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
                 const update: UIUpdate = JSON.parse(event.data);
 
                 if (update.type === 'hero_status') {
-                    setGameEnded(false); // live data un-freezes a reviewed board
                     const hd = update.data as unknown as HeroData;
+                    // A-1/A-3 fix: Dota GSI keeps posting through the score
+                    // screen, so "any hero_status un-freezes" melted the freeze
+                    // instantly and the clock kept climbing on dead-game data.
+                    // Only a genuinely NEW live context un-freezes; same-match
+                    // post-game echoes are dropped whole.
+                    if (gameEndedRef.current) {
+                        const isNewMatch = !!hd.match_id && matchIdRef.current !== hd.match_id;
+                        const looksLive = typeof hd.game_phase === 'string' && (
+                            hd.game_phase.includes('PRE_GAME')
+                            || hd.game_phase.includes('HERO_SELECTION')
+                            || hd.game_phase.includes('STRATEGY_TIME')
+                            || hd.game_phase.includes('IN_PROGRESS')
+                        );
+                        if (!(isNewMatch && looksLive)) return;
+                        setGameEnded(false);
+                    }
                     heroDataRef.current = hd;
                     setHeroData(hd);
                     setLastHeroAt(Date.now());
@@ -809,6 +824,7 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
             <RaijinBriefingRoom
                 visible={serverStatus === 'ready' && !gameEnded}
                 onOpenScouting={() => setScoutingOpen(true)}
+                myTeam={heroData?.my_team ?? null}
             />
             {serverStatus !== 'ready' && (
                 <div style={{

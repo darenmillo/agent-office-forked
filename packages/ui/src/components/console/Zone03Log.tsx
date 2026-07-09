@@ -92,10 +92,10 @@ export function Zone03Log({ recs, clock, nowMs }: Props) {
                                     fontSize: console_.tLog,
                                     lineHeight: 1.5,
                                     color: console_.body,
-                                    display: '-webkit-box',
-                                    WebkitLineClamp: 2,
-                                    WebkitBoxOrient: 'vertical' as never,
-                                    overflow: 'hidden',
+                                    // A-5 field fix: the 2-line clamp cut coaching
+                                    // mid-sentence — the WHY is the product; let it
+                                    // wrap. The list scrolls/ages instead of clipping.
+                                    overflowWrap: 'break-word',
                                 }}>
                                     <b>{r.title.replace(/[.!]?$/, '.')}</b>{' '}
                                     <span style={{ color: console_.muted }}>{r.reason || r.body}</span>

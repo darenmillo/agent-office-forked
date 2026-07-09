@@ -180,7 +180,7 @@ export function Zone04Gap({ series, threatName, deaths, baseline, winnability, y
                             )}
                             {typeof winnability.n === 'number' && winnability.n > 0 && (
                                 <div style={{ fontSize: 9, letterSpacing: '.2em', color: console_.ghost, fontFamily: console_.mono, marginTop: 3, ...tnum }}>
-                                    FROM {winnability.n} BRACKET GAMES
+                                    FROM {winnability.n} OF YOUR RECENT GAMES
                                 </div>
                             )}
                         </div>

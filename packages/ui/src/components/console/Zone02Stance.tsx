@@ -27,7 +27,7 @@ export function Zone02Stance({ stance }: { stance: StanceData | null }) {
                         fontSize: 11, letterSpacing: '.14em', color: console_.chrome,
                         fontFamily: console_.mono,
                     }}>
-                        CONF <span style={{ color: console_.body, ...tnum }}>{Math.round(stance.confidence)}</span>
+                        CONF <span style={{ color: console_.body, ...tnum }}>{Math.round(stance.confidence * 100)}%</span>
                         {stance.discipline ? ' · DISCIPLINE LOCK' : ''}
                     </span>
                 ) : undefined}

@@ -214,8 +214,8 @@ export function RaijinConsole({
                                     <Zone05Map
                                         deaths={heroData.deaths}
                                         deathSpots={deathSpots}
-                                        heroX={typeof heroData.xpos === 'number' ? heroData.xpos : null}
-                                        heroY={typeof heroData.ypos === 'number' ? heroData.ypos : null}
+                                        heroX={typeof heroData.xpos === 'number' && !(heroData.xpos === 0 && heroData.ypos === 0) ? heroData.xpos : null}
+                                        heroY={typeof heroData.ypos === 'number' && !(heroData.xpos === 0 && heroData.ypos === 0) ? heroData.ypos : null}
                                         alive={heroData.alive}
                                     />
                                 )}

@@ -35,9 +35,19 @@ export function RaijinDeathHeatmap() {
 
     const wardCount = points.filter(p => p.ward_walk).length;
     const caughtCount = points.filter(p => p.caught).length;
-    // Stratz grid is 0-255, x east / y north; SVG y is inverted.
-    const px = (v: number) => (v / 255) * SIZE;
-    const py = (v: number) => SIZE - (v / 255) * SIZE;
+    // Stratz coordinates ride a 0-255 grid but real deaths only span the
+    // playable window (~62-190 x / ~66-186 y per the capability map) — the
+    // old full-grid normalization bunched every point into a center blob
+    // (field bug A-4). Normalize over the observed extent (padded) and clamp
+    // outliers inside the frame. SVG y stays inverted (y = north).
+    const xs = points.map(p => p.x);
+    const ys = points.map(p => p.y);
+    const pad = 8;
+    const xMin = Math.min(...xs) - pad, xMax = Math.max(...xs) + pad;
+    const yMin = Math.min(...ys) - pad, yMax = Math.max(...ys) + pad;
+    const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+    const px = (v: number) => clamp01((v - xMin) / Math.max(1, xMax - xMin)) * SIZE;
+    const py = (v: number) => SIZE - clamp01((v - yMin) / Math.max(1, yMax - yMin)) * SIZE;
 
     return (
         <div style={{ marginTop: 20 }}>

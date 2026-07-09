@@ -445,24 +445,28 @@ function GradeCard({ grade }: { grade: DimensionGrade }) {
                     color: pip.amberFaint,
                     fontVariantNumeric: 'tabular-nums',
                 }}>
-                    {grade.score.toFixed(0)}
+                    {/* A-6: a not-measured dimension must not render a literal
+                        0 next to "Not measured" — that reads as a failing score. */}
+                    {grade.grade === '—' ? '' : grade.score.toFixed(0)}
                 </span>
             </div>
-            {/* Score bar */}
-            <div style={{
-                height: 4,
-                background: pip.bgDeep,
-                position: 'relative',
-                border: `1px solid ${pip.amberGhost}`,
-            }}>
+            {/* Score bar — hidden entirely for not-measured dimensions */}
+            {grade.grade !== '—' && (
                 <div style={{
-                    position: 'absolute',
-                    left: 0, top: 0, bottom: 0,
-                    width: `${Math.max(0, Math.min(100, grade.score))}%`,
-                    background: color,
-                    boxShadow: `0 0 6px ${color}66`,
-                }} />
-            </div>
+                    height: 4,
+                    background: pip.bgDeep,
+                    position: 'relative',
+                    border: `1px solid ${pip.amberGhost}`,
+                }}>
+                    <div style={{
+                        position: 'absolute',
+                        left: 0, top: 0, bottom: 0,
+                        width: `${Math.max(0, Math.min(100, grade.score))}%`,
+                        background: color,
+                        boxShadow: `0 0 6px ${color}66`,
+                    }} />
+                </div>
+            )}
             <div style={{
                 fontSize: pip.textSm,
                 color: pip.amber,

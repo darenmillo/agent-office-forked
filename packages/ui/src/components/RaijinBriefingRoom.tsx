@@ -18,6 +18,9 @@ import { bcast, pip } from '../raijinTheme';
 interface Props {
     visible: boolean;
     onOpenScouting: () => void;
+    /** Last known player team (radiant/dire) — gates the dossier's enemy
+     *  filter. null = unknown → show NO enemies (never mixed teams). */
+    myTeam?: string | null;
 }
 
 interface SkinTokens {
@@ -61,7 +64,7 @@ interface LeakProfile {
     matches?: number;
 }
 
-export function RaijinBriefingRoom({ visible, onOpenScouting }: Props) {
+export function RaijinBriefingRoom({ visible, onOpenScouting, myTeam = null }: Props) {
     const [skin, setSkin] = useState<'broadcast' | 'dossier'>(() =>
         localStorage.getItem('raijin-briefing-skin') === 'dossier' ? 'dossier' : 'broadcast');
     const [leaks, setLeaks] = useState<LeakProfile | null>(null);
@@ -93,13 +96,26 @@ export function RaijinBriefingRoom({ visible, onOpenScouting }: Props) {
             })
             .catch(() => { /* honest empty state below */ })
             .finally(() => { if (!cancelled) setLeaksTried(true); });
-        // Known enemies for a real dossier (no fabrication — names only until scouted).
+        // Known enemies for a real dossier (no fabrication — names only until
+        // scouted). Review P1: /api/enemy-intel returns ALL TEN players — the
+        // old unfiltered map listed the player's own team (and own hero) as
+        // "known enemies". Filter to the opposing team; unknown team → none.
         fetch(`${RAIJIN_API}/api/enemy-intel`)
             .then(r => (r.ok ? r.json() : null))
             .then(d => {
                 if (cancelled) return;
-                const names: string[] = (d?.players || d?.enemies || [])
-                    .map((p: { hero_name?: string; hero?: string }) => p.hero_name || p.hero)
+                const mine = (myTeam || '').toLowerCase();
+                const players: Array<{ hero_name?: string; hero?: string; team?: string | number }> =
+                    d?.players || d?.enemies || [];
+                const names: string[] = players
+                    .filter(p => {
+                        if (!mine) return false; // team unknown → never guess
+                        const t = String(p.team ?? '').toLowerCase();
+                        // team arrives as radiant/dire or Valve's 2/3
+                        const norm = t === '2' ? 'radiant' : t === '3' ? 'dire' : t;
+                        return norm !== '' && norm !== mine;
+                    })
+                    .map(p => p.hero_name || p.hero || '')
                     .filter(Boolean);
                 setEnemies(names);
             })

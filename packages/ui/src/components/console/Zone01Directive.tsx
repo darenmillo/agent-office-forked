@@ -46,6 +46,9 @@ export function Zone01Directive({ action, heroData, goldTarget, clock, nowMs }: 
         : action
             ? action.title
             : 'NO LIVE CALL — PLAY YOUR GAME';
+    // A-5 sizing input: the plain-string length of whatever renders above
+    // (the dead-state JSX is a fixed short line — treat it as such).
+    const directiveLen = typeof directiveText === 'string' ? directiveText.length : 30;
 
     const whyText = dead
         ? 'Buying from the fountain shop converts dead time into your next timing.'
@@ -83,17 +86,20 @@ export function Zone01Directive({ action, heroData, goldTarget, clock, nowMs }: 
                 className="console-fade"
                 style={{
                     fontFamily: console_.display,
-                    fontSize: cutTakeover ? 64 : console_.tDirective,
-                    lineHeight: 1.02,
+                    // A-5: long LLM reads promoted into the directive slot were
+                    // clipping mid-sentence at 52px. Step the display size down
+                    // with length instead of clamping — the words always win.
+                    fontSize: cutTakeover ? 64
+                        : directiveLen > 140 ? 22
+                        : directiveLen > 60 ? 30
+                        : console_.tDirective,
+                    lineHeight: directiveLen > 60 ? 1.2 : 1.02,
                     fontWeight: 700,
                     margin: '16px 0 12px',
                     color: critical || dead ? console_.dire : action ? console_.ink : console_.ghost,
                     letterSpacing: cutTakeover ? '-.005em' : '.005em',
                     textTransform: 'uppercase',
-                    display: '-webkit-box',
-                    WebkitLineClamp: 2,
-                    WebkitBoxOrient: 'vertical' as never,
-                    overflow: 'hidden',
+                    overflowWrap: 'break-word',
                 }}
             >
                 {directiveText}
@@ -102,8 +108,7 @@ export function Zone01Directive({ action, heroData, goldTarget, clock, nowMs }: 
                 <p style={{
                     margin: 0, fontSize: console_.tReading, lineHeight: 1.55,
                     color: console_.muted, fontFamily: console_.reading, maxWidth: '52ch',
-                    display: '-webkit-box', WebkitLineClamp: 3,
-                    WebkitBoxOrient: 'vertical' as never, overflow: 'hidden',
+                    overflowWrap: 'break-word',
                 }}>
                     {whyText}
                 </p>
