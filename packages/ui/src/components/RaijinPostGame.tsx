@@ -5,6 +5,7 @@
  * post-game report attached (or fetched from /api/post-game/latest). */
 import React, { useEffect, useState } from 'react';
 import { DimensionGrade, PostGameReport, RAIJIN_API, StructuredNarrative } from '../raijinTypes';
+import { RaijinDeathHeatmap } from './RaijinDeathHeatmap';
 import { pip, glow, glowText } from '../raijinTheme';
 
 interface Props {
@@ -20,6 +21,7 @@ const GRADE_COLOR: Record<string, string> = {
     C: '#FFD54F',
     D: '#FF8C00',
     F: '#FF4136',
+    '—': '#4A525E', // not measured — neutral, must not read as a grade
 };
 
 const DIM_LABEL: Record<string, string> = {
@@ -189,6 +191,9 @@ export function RaijinPostGame({ report, onDismiss, onViewHistory }: Props) {
                         })}
                     </div>
                 )}
+
+                {/* Death heatmap — last ~20 games' deaths + leak flags (Track F) */}
+                <RaijinDeathHeatmap />
 
                 {/* Footer */}
                 <div style={{ marginTop: pip.sp4, textAlign: 'center' }}>
