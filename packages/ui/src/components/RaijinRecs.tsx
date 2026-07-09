@@ -24,8 +24,12 @@ import { RaijinHistory } from './RaijinHistory';
 import { RaijinBriefingRoom } from './RaijinBriefingRoom';
 import {
     GapPoint, upsertGapPoint, bucketMinute, goldEarnedProxy,
+    CheckinState, checkinNext, llmKind,
 } from '../console';
-import type { PostGameReport, RecUrgency, StanceData, TimerRailData } from '../raijinTypes';
+import type {
+    GapBaselineData, PostGameReport, RecUrgency, StanceData,
+    TimerRailData, WinnabilityData,
+} from '../raijinTypes';
 
 const OFFICE_API = 'http://localhost:3000';
 /** App.tsx sidebar is 48px — the old left:56 left an 8px dead gutter. */
@@ -103,6 +107,45 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
     const matchIdRef = useRef<string | null>(null);
     const heroDataRef = useRef<HeroData | null>(null);
 
+    // Wave 2 feeds — reference curves, winnability, death positions, CHECK-IN.
+    const [gapBaseline, setGapBaseline] = useState<GapBaselineData | null>(null);
+    const [winnability, setWinnability] = useState<{ data: WinnabilityData; receivedAt: number } | null>(null);
+    const [deathSpots, setDeathSpots] = useState<Array<{ x: number; y: number }>>([]);
+    const deathSpotKeysRef = useRef<Set<string>>(new Set());
+    /** True once GSI delivered real net_worth — flips Zone 04's YOU label. */
+    const [youIsNetWorth, setYouIsNetWorth] = useState(false);
+    const [checkin, setCheckin] = useState<CheckinState>({ phase: 'idle', queuedAt: null });
+    const [ambientLlm, setAmbientLlm] = useState<boolean | null>(null);
+
+    const resetWave2State = useCallback(() => {
+        setGapBaseline(null);
+        setWinnability(null);
+        setDeathSpots([]);
+        deathSpotKeysRef.current = new Set();
+        setYouIsNetWorth(false);
+        setCheckin({ phase: 'idle', queuedAt: null });
+    }, []);
+
+    const fireCheckin = useCallback(async () => {
+        setCheckin(s => checkinNext(s, { type: 'fire', now: Date.now() }));
+        try {
+            const r = await fetch(`${RAIJIN_API}/api/checkin`, { method: 'POST' });
+            if (!r.ok) setCheckin(s => checkinNext(s, { type: 'error' }));
+        } catch {
+            setCheckin(s => checkinNext(s, { type: 'error' }));
+        }
+    }, []);
+
+    // Un-wedge the CHECK-IN button if no answer ever lands.
+    useEffect(() => {
+        if (checkin.phase !== 'queued') return;
+        const id = setInterval(
+            () => setCheckin(s => checkinNext(s, { type: 'tick', now: Date.now() })),
+            5000,
+        );
+        return () => clearInterval(id);
+    }, [checkin.phase]);
+
     const pickRole = useCallback((r: Role | null) => {
         setRole(r);
         if (r) localStorage.setItem('raijin-role', r);
@@ -151,6 +194,17 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
         return () => clearInterval(id);
     }, [serverStatus, checkBotStatus]);
 
+    // Wave 2: seed the ambient-LLM toggle from the engine's settings once up.
+    useEffect(() => {
+        if (serverStatus !== 'ready') return;
+        fetch(`${RAIJIN_API}/api/settings`)
+            .then(r => (r.ok ? r.json() : null))
+            .then(d => {
+                if (d && typeof d.ambient_llm === 'boolean') setAmbientLlm(d.ambient_llm);
+            })
+            .catch(() => { /* older engine — toggle stays hidden */ });
+    }, [serverStatus]);
+
     // Auto-open the enemy picker when a hero is live but enemies are unknown.
     // Fires ONCE per game — tracked via pickerAutoOpenedRef which resets on game_ended.
     useEffect(() => {
@@ -184,7 +238,8 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
         setTimerRail(null);
         setGapSeries([]);
         setEnemyIntelAt(null);
-    }, []);
+        resetWave2State();
+    }, [resetWave2State]);
 
     // SIGNAL LOST tracking — the console dims (never blanks) when the WS drops
     // mid-game and stamps how long the link has been down.
@@ -224,12 +279,17 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
                         matchIdRef.current = hd.match_id;
                         prevDeathsRef.current = hd.deaths ?? 0;
                         setGapSeries([]);
+                        resetWave2State();
                     }
                     const died = (hd.deaths ?? 0) > prevDeathsRef.current;
                     prevDeathsRef.current = hd.deaths ?? 0;
                     if ((hd.clock_time ?? -1) >= 0) {
                         const min = bucketMinute(hd.clock_time);
-                        const you = hd.gpm > 0 ? goldEarnedProxy(hd.gpm, hd.game_time) : null;
+                        // Wave 2: true net worth when the engine sends it;
+                        // gold-earned proxy stays as the honest fallback.
+                        const nw = typeof hd.net_worth === 'number' && hd.net_worth > 0 ? hd.net_worth : null;
+                        if (nw !== null) setYouIsNetWorth(true);
+                        const you = nw ?? (hd.gpm > 0 ? goldEarnedProxy(hd.gpm, hd.game_time) : null);
                         if (you !== null || died) {
                             setGapSeries(s => upsertGapPoint(s, min, {
                                 ...(you !== null ? { you } : {}),
@@ -244,6 +304,30 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
                         // PacingController now — no title matching here.
                         const now = Date.now();
                         setRecommendations(prev => ingestRecs(prev, newRecs, now));
+                        // Wave 2: a landed CHECK-IN answer releases the button.
+                        if (newRecs.some(r => llmKind(r) === 'checkin')) {
+                            setCheckin(s => checkinNext(s, { type: 'landed' }));
+                        }
+                        // Wave 2: death recs carry ledger positions → Zone 05.
+                        for (const r of newRecs) {
+                            const mx = r.meta?.x;
+                            const my = r.meta?.y;
+                            if (r.tags?.includes('death')
+                                && typeof mx === 'number' && typeof my === 'number') {
+                                const key = `${mx}|${my}|${r.timestamp}`;
+                                if (!deathSpotKeysRef.current.has(key)) {
+                                    deathSpotKeysRef.current.add(key);
+                                    setDeathSpots(prev => [...prev, { x: mx, y: my }]);
+                                }
+                            }
+                        }
+                    }
+                } else if (update.type === 'gap_baseline') {
+                    setGapBaseline(update.data as unknown as GapBaselineData);
+                } else if (update.type === 'winnability') {
+                    const w = update.data as unknown as WinnabilityData;
+                    if (typeof w?.p_win === 'number') {
+                        setWinnability({ data: w, receivedAt: Date.now() });
                     }
                 } else if (update.type === 'enemy_intel') {
                     const ei = update.data as unknown as EnemyIntelData;
@@ -297,10 +381,12 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
                         enabled?: boolean;
                         muted?: boolean;
                         min_urgency?: RecUrgency;
+                        ambient_llm?: boolean;
                     };
                     if (typeof d.enabled === 'boolean') setTtsEnabled(d.enabled);
                     if (typeof d.muted === 'boolean') setTtsMuted(d.muted);
                     if (d.min_urgency) setTtsMinUrgency(d.min_urgency);
+                    if (typeof d.ambient_llm === 'boolean') setAmbientLlm(d.ambient_llm);
                 } else if (update.type === 'tts_audio') {
                     // Decode base64-encoded MP3 chunks and play via Web Audio API
                     const d = update.data as { chunks?: string[] };
@@ -431,6 +517,21 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
     };
     const consoleControls = (
         <span style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 'none' }}>
+            <button
+                onClick={fireCheckin}
+                disabled={checkin.phase === 'queued'}
+                aria-label="Ask the coach for a full check-in read now"
+                title="Snapshot the game state and get a full read (timings, items, playstyle)"
+                style={{
+                    background: 'transparent', cursor: checkin.phase === 'queued' ? 'wait' : 'pointer',
+                    border: `1px solid ${checkin.phase === 'queued' ? console_.line : console_.amber}`,
+                    fontFamily: console_.mono, fontSize: 10, letterSpacing: '.16em',
+                    color: checkin.phase === 'queued' ? console_.chrome : console_.amber,
+                    padding: '3px 8px', marginRight: 6,
+                }}
+            >
+                {checkin.phase === 'queued' ? 'READING…' : 'CHECK-IN'}
+            </button>
             {ROLES.map(r => (
                 <button
                     key={r.id}
