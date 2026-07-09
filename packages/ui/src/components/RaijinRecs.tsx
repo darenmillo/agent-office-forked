@@ -9,21 +9,22 @@ import {
     RAIJIN_API,
     RAIJIN_WS,
 } from '../raijinTypes';
-import { bcast, bLabel, bNum } from '../raijinTheme';
+import { bcast, bLabel, bNum, console_ } from '../raijinTheme';
 import { ingestRecs, visibleRecs, Role } from '../pacing';
-import { RaijinHeroDisplay } from './RaijinHeroDisplay';
-import { RaijinStrategy } from './RaijinStrategy';
-import { RaijinActionBar } from './RaijinActionBar';
-import { RaijinTeamIntel } from './RaijinTeamIntel';
+// CONSOLE redesign (2026-07-08): the live board is RaijinConsole; the old
+// bcast components (ActionBar/StanceBanner/Strategy/TimerRail/TeamIntel/
+// HeroDisplay) are unwired but kept on disk as reference.
+import { RaijinConsole } from './console/RaijinConsole';
 import { RaijinEnemyPicker } from './RaijinEnemyPicker';
 import { RaijinScoutingForm } from './RaijinScoutingForm';
 import { RaijinDeathPanel } from './RaijinDeathPanel';
 import { RaijinSettings } from './RaijinSettings';
 import { RaijinPostGame } from './RaijinPostGame';
 import { RaijinHistory } from './RaijinHistory';
-import { RaijinStanceBanner } from './RaijinStanceBanner';
-import { RaijinTimerRail } from './RaijinTimerRail';
 import { RaijinBriefingRoom } from './RaijinBriefingRoom';
+import {
+    GapPoint, upsertGapPoint, bucketMinute, goldEarnedProxy,
+} from '../console';
 import type { PostGameReport, RecUrgency, StanceData, TimerRailData } from '../raijinTypes';
 
 const OFFICE_API = 'http://localhost:3000';
@@ -93,6 +94,14 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
     const audioCtxRef = useRef<AudioContext | null>(null);
     const wsRef = useRef<WebSocket | null>(null);
     const retryRef = useRef<number>(1000);
+
+    // CONSOLE derived-state feeds (Zone 04 gap + header link health).
+    const [gapSeries, setGapSeries] = useState<GapPoint[]>([]);
+    const [enemyIntelAt, setEnemyIntelAt] = useState<number | null>(null);
+    const [lastHeroAt, setLastHeroAt] = useState<number | null>(null);
+    const prevDeathsRef = useRef(0);
+    const matchIdRef = useRef<string | null>(null);
+    const heroDataRef = useRef<HeroData | null>(null);
 
     const pickRole = useCallback((r: Role | null) => {
         setRole(r);
@@ -168,11 +177,25 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
     const dismissFrozenBoard = useCallback(() => {
         setGameEnded(false);
         setHeroData(null);
+        heroDataRef.current = null;
         setEnemyIntel(null);
         setRecommendations([]);
         setStance(null);
         setTimerRail(null);
+        setGapSeries([]);
+        setEnemyIntelAt(null);
     }, []);
+
+    // SIGNAL LOST tracking — the console dims (never blanks) when the WS drops
+    // mid-game and stamps how long the link has been down.
+    const [signalLostAt, setSignalLostAt] = useState<number | null>(null);
+    useEffect(() => {
+        if (connStatus === 'disconnected' && heroData) {
+            setSignalLostAt(prev => prev ?? Date.now());
+        } else {
+            setSignalLostAt(null);
+        }
+    }, [connStatus, heroData]);
 
     const connect = useCallback(() => {
         if (wsRef.current?.readyState === WebSocket.OPEN || wsRef.current?.readyState === WebSocket.CONNECTING) return;
@@ -191,7 +214,29 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
 
                 if (update.type === 'hero_status') {
                     setGameEnded(false); // live data un-freezes a reviewed board
-                    setHeroData(update.data as unknown as HeroData);
+                    const hd = update.data as unknown as HeroData;
+                    heroDataRef.current = hd;
+                    setHeroData(hd);
+                    setLastHeroAt(Date.now());
+                    // Zone 04 gap series: reset on a new match, accumulate the
+                    // gold-earned proxy per minute, mark real death events.
+                    if (hd.match_id && matchIdRef.current !== hd.match_id) {
+                        matchIdRef.current = hd.match_id;
+                        prevDeathsRef.current = hd.deaths ?? 0;
+                        setGapSeries([]);
+                    }
+                    const died = (hd.deaths ?? 0) > prevDeathsRef.current;
+                    prevDeathsRef.current = hd.deaths ?? 0;
+                    if ((hd.clock_time ?? -1) >= 0) {
+                        const min = bucketMinute(hd.clock_time);
+                        const you = hd.gpm > 0 ? goldEarnedProxy(hd.gpm, hd.game_time) : null;
+                        if (you !== null || died) {
+                            setGapSeries(s => upsertGapPoint(s, min, {
+                                ...(you !== null ? { you } : {}),
+                                death: died,
+                            }));
+                        }
+                    }
                 } else if (update.type === 'recommendations') {
                     const newRecs = (update.data as any).recommendations as Recommendation[];
                     if (newRecs?.length) {
@@ -201,7 +246,20 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
                         setRecommendations(prev => ingestRecs(prev, newRecs, now));
                     }
                 } else if (update.type === 'enemy_intel') {
-                    setEnemyIntel(update.data as unknown as EnemyIntelData);
+                    const ei = update.data as unknown as EnemyIntelData;
+                    setEnemyIntel(ei);
+                    setEnemyIntelAt(Date.now());
+                    // Zone 04 enemy curve: the highest-NW enemy's real net worth.
+                    const team = heroDataRef.current?.my_team?.toLowerCase();
+                    const foes = (ei.players ?? []).filter(
+                        p => team && p.team && p.team.toLowerCase() !== team,
+                    );
+                    if (foes.length && (ei.game_time ?? -1) >= 0) {
+                        const top = foes.reduce((a, b) => (b.net_worth > a.net_worth ? b : a));
+                        setGapSeries(s => upsertGapPoint(s, bucketMinute(ei.game_time), {
+                            enemy: top.net_worth,
+                        }));
+                    }
                 } else if (update.type === 'stance') {
                     setStance(update.data as unknown as StanceData);
                 } else if (update.type === 'timers') {
@@ -365,16 +423,61 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
     const statusLabel = connStatus === 'connected' ? 'ONLINE'
         : connStatus === 'connecting' ? 'SYNC..' : 'OFFLINE';
 
+    const liveBoard = !!heroData;
+
+    // Compact console-header controls (live board): role letters + voice + gear.
+    const ROLE_LETTER: Record<Role, string> = {
+        carry: 'C', mid: 'M', offlane: 'O', soft_support: '4', hard_support: '5',
+    };
+    const consoleControls = (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 'none' }}>
+            {ROLES.map(r => (
+                <button
+                    key={r.id}
+                    onClick={() => pickRole(role === r.id ? null : r.id)}
+                    aria-pressed={role === r.id}
+                    title={`Coach me as ${r.label}`}
+                    style={{
+                        background: 'transparent', border: 'none', cursor: 'pointer',
+                        fontFamily: console_.mono, fontSize: 11, letterSpacing: '.08em',
+                        color: role === r.id ? console_.amber : console_.ghost,
+                        padding: '2px 3px', fontWeight: role === r.id ? 700 : 400,
+                    }}
+                >
+                    {ROLE_LETTER[r.id]}
+                </button>
+            ))}
+            {ttsEnabled && (
+                <button
+                    onClick={toggleMute}
+                    aria-label={ttsMuted ? 'Unmute voice coaching (Alt+M)' : 'Mute voice coaching (Alt+M)'}
+                    style={{
+                        background: 'transparent', border: 'none', cursor: 'pointer',
+                        fontFamily: console_.mono, fontSize: 10, letterSpacing: '.14em',
+                        color: ttsMuted ? console_.dire : console_.chrome, padding: '2px 4px',
+                    }}
+                >
+                    {ttsMuted ? 'MUTED' : 'VOICE'}
+                </button>
+            )}
+            <button
+                onClick={() => setSettingsOpen(true)}
+                aria-label="Open Raijin settings (Alt+S)"
+                style={{
+                    background: 'transparent', border: 'none', cursor: 'pointer',
+                    fontSize: 13, color: console_.chrome, padding: '2px 4px',
+                }}
+            >
+                ⚙
+            </button>
+        </span>
+    );
+
     return (
         <div style={{
             position: 'absolute', top: 0, left: standalone ? 0 : SIDEBAR_W, right: 0, bottom: 0,
-            display: 'grid',
-            gridTemplateColumns: 'minmax(0, 1fr) minmax(320px, 30%)',
-            gridTemplateRows: 'auto auto auto minmax(0, 1fr) auto',
-            gap: 12,
-            padding: 14,
-            overflow: 'auto',
-            background: `radial-gradient(1200px 600px at 80% -10%, ${bcast.base2} 0%, transparent 60%), ${bcast.base}`,
+            overflow: 'hidden',
+            background: '#050608',
             fontFamily: bcast.body,
             color: bcast.ink,
             pointerEvents: 'auto',
@@ -470,6 +573,43 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
                 </div>
             )}
 
+            {/* CONSOLE live board — renders whenever a hero is live or frozen for review */}
+            {liveBoard && heroData && (
+                <RaijinConsole
+                    heroData={heroData}
+                    recs={recs}
+                    stance={stance}
+                    timerRail={timerRail}
+                    enemyIntel={enemyIntel}
+                    enemyIntelReceivedAt={enemyIntelAt}
+                    enemySource={enemySource}
+                    onSourceClick={() => setPickerOpen(true)}
+                    role={role}
+                    gameEnded={gameEnded}
+                    endedAt={endedAtRef.current}
+                    lastHeroAt={lastHeroAt}
+                    signalLostAt={signalLostAt}
+                    bracket={bracket}
+                    patchVersion={patchStatus?.engine_version ?? null}
+                    gapSeries={gapSeries}
+                    headerControls={consoleControls}
+                />
+            )}
+
+            {/* Idle screen (queue time / engine down): full controls + briefing room */}
+            {!liveBoard && (
+            <div style={{
+                position: 'absolute', inset: 0,
+                display: 'grid',
+                gridTemplateColumns: 'minmax(0, 1fr)',
+                gridTemplateRows: 'minmax(0, 1fr)',
+                alignItems: 'start',
+                gap: 12,
+                padding: 14,
+                paddingTop: 64,
+                overflow: 'auto',
+                background: `radial-gradient(1200px 600px at 80% -10%, ${bcast.base2} 0%, transparent 60%), ${bcast.base}`,
+            }}>
             {/* Header controls: role selector + reports + engine controls */}
             <div style={{
                 position: 'absolute', top: 14, right: 16, zIndex: 20,
@@ -560,55 +700,26 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
                 </span>
             </div>
 
-            {/* Row 1 (span): score/intel strip */}
-            <div style={{ gridColumn: '1 / -1', display: 'grid' }}>
-                <RaijinTeamIntel
-                    enemyIntel={enemyIntel}
-                    heroData={heroData}
-                    enemySource={enemySource}
-                    onSourceClick={() => setPickerOpen(true)}
-                />
-            </div>
-
-            {/* Phase 1 (#8): queue-time briefing — replaces the dead pre-game wall */}
+            {/* Phase 1 (#8): queue-time briefing — the idle screen's main surface */}
             <RaijinBriefingRoom
-                visible={serverStatus === 'ready' && !heroData && !gameEnded}
+                visible={serverStatus === 'ready' && !gameEnded}
                 onOpenScouting={() => setScoutingOpen(true)}
             />
-
-            {/* Row 2 col 1: THE priority action (centerpiece) */}
-            <div style={{ gridColumn: 1, display: 'grid' }}>
-                <RaijinActionBar
-                    recommendations={recs}
-                    heroData={gameEnded ? null : heroData}
-                    role={role}
-                    ttsEnabled={ttsEnabled}
-                    ttsMuted={ttsMuted}
-                    onToggleMute={toggleMute}
-                />
+            {serverStatus !== 'ready' && (
+                <div style={{
+                    alignSelf: 'center', justifySelf: 'center', textAlign: 'center',
+                    fontFamily: console_.mono, fontSize: 12, letterSpacing: '.2em',
+                    color: console_.chrome, lineHeight: 2,
+                }}>
+                    RAIJIN CONSOLE
+                    <br />
+                    <span style={{ color: console_.ghost }}>
+                        {serverStatus === 'starting' ? 'ENGINE STARTING…' : 'ENGINE OFFLINE — START ENGINE TO BEGIN'}
+                    </span>
+                </div>
+            )}
             </div>
-
-            {/* Right rail (rows 2-4): stance + WHY-first feed */}
-            <div style={{
-                gridColumn: 2, gridRow: '2 / 6',
-                display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0,
-            }}>
-                <RaijinStanceBanner stance={heroData && !gameEnded ? stance : null} />
-                <RaijinStrategy recommendations={recs} />
-            </div>
-
-            {/* Row 3 col 1: hero panel */}
-            <div style={{ gridColumn: 1, display: 'grid' }}>
-                <RaijinHeroDisplay heroData={heroData} recommendations={recs} />
-            </div>
-
-            {/* Row 4 col 1: timers (hidden on a frozen board — countdowns are dead) */}
-            <div style={{ gridColumn: 1, display: 'grid', alignContent: 'start' }}>
-                <RaijinTimerRail
-                    rail={heroData && timerRail && !gameEnded ? timerRail.data : null}
-                    receivedAt={timerRail?.receivedAt ?? null}
-                />
-            </div>
+            )}
 
             {/* Death-timer coaching panel — never over a frozen review board */}
             {!gameEnded && <RaijinDeathPanel heroData={heroData} recommendations={recs} />}
