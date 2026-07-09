@@ -41,7 +41,14 @@ const ROLES: Array<{ id: Role; label: string }> = [
     { id: 'hard_support', label: 'POS5' },
 ];
 
-export function RaijinRecs() {
+interface RaijinRecsProps {
+    /** Standalone :5050 build (iframe tab in the command center, Track-4 D2/D3):
+     *  engine control goes same-origin to bot_manager and there is no shell rail. */
+    standalone?: boolean;
+}
+
+export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
+    const ctlBase = standalone ? '' : OFFICE_API;
     const [heroData, setHeroData] = useState<HeroData | null>(null);
     const [enemyIntel, setEnemyIntel] = useState<EnemyIntelData | null>(null);
     const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
@@ -96,7 +103,7 @@ export function RaijinRecs() {
     // Poll Raijin server status
     const checkServer = useCallback(async () => {
         try {
-            const resp = await fetch(`${OFFICE_API}/api/raijin/status`);
+            const resp = await fetch(`${ctlBase}/api/raijin/status`);
             const data = await resp.json();
             if (data.ready) setServerStatus('ready');
             else if (data.running) setServerStatus('starting');
@@ -104,7 +111,7 @@ export function RaijinRecs() {
         } catch {
             setServerStatus('stopped');
         }
-    }, []);
+    }, [ctlBase]);
 
     useEffect(() => {
         checkServer();
@@ -148,14 +155,14 @@ export function RaijinRecs() {
 
     const toggleServer = useCallback(async () => {
         if (serverStatus === 'ready' || serverStatus === 'starting') {
-            await fetch(`${OFFICE_API}/api/raijin/stop`, { method: 'POST' });
+            await fetch(`${ctlBase}/api/raijin/stop`, { method: 'POST' });
             setServerStatus('stopped');
             wsRef.current?.close();
         } else {
             setServerStatus('starting');
-            await fetch(`${OFFICE_API}/api/raijin/start`, { method: 'POST' });
+            await fetch(`${ctlBase}/api/raijin/start`, { method: 'POST' });
         }
-    }, [serverStatus]);
+    }, [serverStatus, ctlBase]);
 
     /** Clear the frozen post-game board back to the idle state. */
     const dismissFrozenBoard = useCallback(() => {
@@ -360,7 +367,7 @@ export function RaijinRecs() {
 
     return (
         <div style={{
-            position: 'absolute', top: 0, left: SIDEBAR_W, right: 0, bottom: 0,
+            position: 'absolute', top: 0, left: standalone ? 0 : SIDEBAR_W, right: 0, bottom: 0,
             display: 'grid',
             gridTemplateColumns: 'minmax(0, 1fr) minmax(320px, 30%)',
             gridTemplateRows: 'auto auto auto minmax(0, 1fr) auto',
