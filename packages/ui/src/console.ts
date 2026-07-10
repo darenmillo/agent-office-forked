@@ -290,6 +290,18 @@ export const LLM_KIND_LABEL: Record<LlmKind, string> = {
     read: 'RAIJIN READ',
 };
 
+// A-7: pulse-check strip — row register per event kind. Failures always
+// read as danger; llm rows wear the PHOSPHOR voice like every coach read.
+export type ActivityTone = 'dire' | 'phos' | 'chrome' | 'amber' | 'body';
+
+export function activityTone(kind: string, ok: boolean): ActivityTone {
+    if (!ok || kind === 'error') return 'dire';
+    if (kind === 'llm') return 'phos';
+    if (kind === 'bot' || kind === 'stratz') return 'chrome';
+    if (kind === 'engine') return 'amber';
+    return 'body';
+}
+
 export interface VerdictBadge {
     label: string;
     /** console_ token name — TRADE is a win, never dire. */

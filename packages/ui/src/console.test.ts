@@ -178,8 +178,24 @@ describe('tape events', () => {
 import {
     llmKind, verdictBadge, winnabilityTone, fmtPct,
     checkinNext, CheckinState, CHECKIN_TIMEOUT_MS,
-    worldToMap, baselinePoints,
+    worldToMap, baselinePoints, activityTone,
 } from './console';
+
+describe('activityTone', () => {
+    test('failures always read as danger, regardless of kind', () => {
+        expect(activityTone('llm', false)).toBe('dire');
+        expect(activityTone('bot', false)).toBe('dire');
+        expect(activityTone('error', true)).toBe('dire');
+    });
+    test('kinds map to their console registers', () => {
+        expect(activityTone('llm', true)).toBe('phos');
+        expect(activityTone('bot', true)).toBe('chrome');
+        expect(activityTone('stratz', true)).toBe('chrome');
+        expect(activityTone('engine', true)).toBe('amber');
+        expect(activityTone('rec', true)).toBe('body');
+        expect(activityTone('unknown-future-kind', true)).toBe('body');
+    });
+});
 
 describe('llmKind', () => {
     test('classifies by tags; rule recs are null', () => {

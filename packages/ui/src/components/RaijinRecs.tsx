@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
+    ActivityEvent,
     HeroCardData,
     HeroData,
     Recommendation,
@@ -16,6 +17,7 @@ import { ingestRecs, visibleRecs, Role } from '../pacing';
 // bcast components (ActionBar/StanceBanner/Strategy/TimerRail/TeamIntel/
 // HeroDisplay) are unwired but kept on disk as reference.
 import { RaijinConsole } from './console/RaijinConsole';
+import { ActivityStrip } from './console/ActivityStrip';
 import { RaijinEnemyPicker } from './RaijinEnemyPicker';
 import { RaijinScoutingForm } from './RaijinScoutingForm';
 import { RaijinDeathPanel } from './RaijinDeathPanel';
@@ -66,6 +68,8 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
     // A6.4: one fetch per (match, hero) — hero_id lands after hero select, so
     // the key retries each hero_status until identity is real.
     const heroCardKeyRef = useRef<string | null>(null);
+    // A-7: pulse-check strip — engine activity (backfill on connect + WS push)
+    const [activityFeed, setActivityFeed] = useState<ActivityEvent[]>([]);
     const [pickerOpen, setPickerOpen] = useState(false);
     const pickerAutoOpenedRef = useRef<boolean>(false);
     // v5.0 Phase 4: scouting form state — pre/mid-game role + lane + ally/enemy roles
@@ -268,6 +272,12 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
         ws.onopen = () => {
             setConnStatus('connected');
             retryRef.current = 1000;
+            // A-7: pulse-strip backfill — server ring replaces local state on
+            // every (re)connect, so reconnects never double-append.
+            fetch(`${RAIJIN_API}/api/activity`)
+                .then(r => (r.ok ? r.json() : null))
+                .then(d => { if (Array.isArray(d?.events)) setActivityFeed(d.events); })
+                .catch(() => { /* engine offline */ });
         };
 
         ws.onmessage = (event) => {
@@ -430,6 +440,10 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
                     if (d.chunks && d.chunks.length > 0) {
                         void playTTSChunks(d.chunks, audioCtxRef);
                     }
+                } else if (update.type === 'activity') {
+                    // A-7: pulse-check strip — mirror the server's 200-cap.
+                    const ev = update.data as unknown as ActivityEvent;
+                    setActivityFeed(prev => [...prev.slice(-199), ev]);
                 } else if (update.type === 'connection') {
                     const cd = update.data as any;
                     if (cd.patch_status) setPatchStatus(cd.patch_status);
@@ -718,6 +732,9 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
                     </button>
                 </div>
             )}
+
+            {/* A-7: pulse-check strip — fixed overlay, survives idle <-> live */}
+            <ActivityStrip events={activityFeed} />
 
             {/* CONSOLE live board — renders whenever a hero is live or frozen for review */}
             {liveBoard && heroData && (

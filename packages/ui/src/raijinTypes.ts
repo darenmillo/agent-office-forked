@@ -141,7 +141,8 @@ export interface UIUpdate {
         | 'timers'              // v6: timer-rail state (absolute clock values)
         | 'stance'              // v6: FARM/FIGHT/PUSH stance banner
         | 'gap_baseline'        // Wave 2: reference curves for Zone 04 (honest sources)
-        | 'winnability';        // Wave 2: P(win) from the offline bracket table
+        | 'winnability'         // Wave 2: P(win) from the offline bracket table
+        | 'activity';           // A-7: pulse-check feed event
     data: Record<string, unknown>;
     timestamp: number;
 }
@@ -182,6 +183,15 @@ export interface StanceData {
     confidence: number;
     discipline: boolean;
     inputs?: Record<string, unknown>;
+}
+
+/** A-7: pulse-check feed event ('activity' WS push + GET /api/activity backfill). */
+export interface ActivityEvent {
+    ts: number;       // unix seconds
+    kind: string;     // llm | rec | error | bot | engine | stratz (open vocab)
+    label: string;
+    detail?: string;
+    ok: boolean;
 }
 
 /** A6.4: personal hero record from GET /api/hero-card. 404 = no data = no card. */
