@@ -187,7 +187,9 @@ describe('llmKind', () => {
         expect(llmKind(rec({ tags: ['llm', 'checkin'] }))).toBe('checkin');
         expect(llmKind(rec({ tags: ['llm', 'closing'] }))).toBe('closing');
         expect(llmKind(rec({ tags: ['death', 'llm', 'analysis'] }))).toBe('death-analysis');
-        expect(llmKind(rec({ tags: ['llm'] }))).toBeNull();
+        expect(llmKind(rec({ tags: ['llm', 'read'] }))).toBe('read');
+        // untyped legacy llm rec renders as a generic read — never unstyled
+        expect(llmKind(rec({ tags: ['llm'] }))).toBe('read');
         expect(llmKind(rec({ tags: ['death'] }))).toBeNull();
         expect(llmKind(rec({}))).toBeNull();
     });

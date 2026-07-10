@@ -74,6 +74,16 @@ export function Zone04Gap({ series, threatName, deaths, baseline, winnability, y
     const medianPath = median.length >= 2 ? buildPath(median, xOf, yOf) : null;
     const deathMarks = series.filter(p => p.death && p.you !== null);
 
+    // A7: team gold advantage (GC bot, delayed) — different scale than the NW
+    // curves, so it renders as a signed strip along the baseline, normalized
+    // to its own max. Clipped to the observed minute domain like the ghosts.
+    const teamGold = (baseline?.team_graph_gold ?? [])
+        .map((v, min) => ({ min, value: v }))
+        .filter(inDomain);
+    const teamGoldMax = Math.max(1, ...teamGold.map(p => Math.abs(p.value)));
+    const STRIP_H = 26; // px of viewBox devoted to the strip, straddling the bottom gridline
+    const stripBase = VB_H - 34;
+
     // X-axis labels: ~6 marks across the observed span.
     const step = Math.max(1, Math.ceil(spanMin / 5));
     const axisMins: number[] = [];
@@ -105,6 +115,11 @@ export function Zone04Gap({ series, threatName, deaths, baseline, winnability, y
                             {medianPath && (
                                 <span style={{ color: console_.ghost }}>╌ YOUR MEDIAN GAME</span>
                             )}
+                            {teamGold.length >= 2 && (
+                                <span style={{ color: console_.chrome }}>
+                                    ▎ {(baseline?.labels?.team_graph_gold ?? 'TEAM GOLD ADV (DELAYED)')}
+                                </span>
+                            )}
                         </span>
                     }
                 />
@@ -120,6 +135,25 @@ export function Zone04Gap({ series, threatName, deaths, baseline, winnability, y
                                 <line key={`v${i}`} x1={(VB_W / 5) * i} y1="0" x2={(VB_W / 5) * i} y2={VB_H} />
                             ))}
                         </g>
+                        {teamGold.length >= 2 && (
+                            <g>
+                                <line x1="0" y1={stripBase} x2={VB_W} y2={stripBase} stroke={console_.line} strokeWidth="1" />
+                                {teamGold.map(p => {
+                                    const h = (Math.abs(p.value) / teamGoldMax) * STRIP_H;
+                                    return (
+                                        <rect
+                                            key={`tg${p.min}`}
+                                            x={xOf(p.min) - 2}
+                                            y={p.value >= 0 ? stripBase - h : stripBase}
+                                            width="4"
+                                            height={Math.max(1, h)}
+                                            fill={p.value >= 0 ? console_.radiant : console_.dire}
+                                            opacity="0.55"
+                                        />
+                                    );
+                                })}
+                            </g>
+                        )}
                         {medianPath && (
                             <path d={medianPath} stroke={console_.ghost} strokeWidth="1.5" strokeDasharray="4 7" fill="none" />
                         )}

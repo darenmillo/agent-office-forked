@@ -136,7 +136,12 @@ export function pickPriorityAction(
     role: Role | null = null,
 ): Recommendation | null {
     const WINDOW = 120_000; // priority actions are NOW actions
-    const fresh = all.filter(r => now - (r.receivedAt ?? now) < WINDOW);
+    // Field F3 (2026-07-09): LLM reads never own the 52px directive — a long
+    // "Raijin says (30 minute mark)" body truncates unreadably there. Reads
+    // render on the PHOSPHOR card / log rows / death panel instead.
+    const fresh = all.filter(
+        r => now - (r.receivedAt ?? now) < WINDOW && !(r.tags ?? []).includes('llm'),
+    );
     if (!fresh.length) return null;
     return fresh.reduce((a, b) => (score(b, role) > score(a, role) ? b : a));
 }

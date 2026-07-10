@@ -121,7 +121,7 @@ export function RaijinBriefingRoom({ visible, onOpenScouting, myTeam = null }: P
             })
             .catch(() => { /* none known yet */ });
         return () => { cancelled = true; };
-    }, [visible]);
+    }, [visible, myTeam]);
 
     if (!visible) return null;
     const t = SKINS[skin];

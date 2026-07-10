@@ -9,7 +9,7 @@
  *  (tape drift + clock extrapolation) freezes with the board. */
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { console_ } from '../../raijinTheme';
-import {
+import { HeroCardData,
     HeroData, Recommendation, StanceData, TimerRailData,
     EnemyIntelData, EnemySource, GapBaselineData, WinnabilityData,
 } from '../../raijinTypes';
@@ -40,6 +40,7 @@ const ROLE_HEADER: Record<Role, string> = {
 
 interface Props {
     heroData: HeroData;
+    heroCard?: HeroCardData | null;
     recs: Recommendation[];
     stance: StanceData | null;
     timerRail: { data: TimerRailData; receivedAt: number } | null;
@@ -64,7 +65,8 @@ interface Props {
 }
 
 export function RaijinConsole({
-    heroData, recs, stance, timerRail, enemyIntel, enemyIntelReceivedAt,
+    heroData,
+    heroCard = null, recs, stance, timerRail, enemyIntel, enemyIntelReceivedAt,
     enemySource, onSourceClick, role, gameEnded, endedAt, lastHeroAt,
     signalLostAt, bracket, patchVersion, gapSeries, headerControls,
     gapBaseline, winnability, youIsNetWorth, deathSpots,
@@ -175,6 +177,7 @@ export function RaijinConsole({
                         llmAgeMs={newestLLM ? nowMs - newestLLM : null}
                         intelAgeMs={enemyIntelReceivedAt !== null ? nowMs - enemyIntelReceivedAt : null}
                         frozen={gameEnded}
+                        heroCard={heroCard}
                         signalLostForMs={dimmed && signalLostAt !== null ? nowMs - signalLostAt : null}
                         headerControls={headerControls}
                     />

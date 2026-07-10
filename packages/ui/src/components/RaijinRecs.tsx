@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
+    HeroCardData,
     HeroData,
     Recommendation,
     UIUpdate,
@@ -61,6 +62,10 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
     const [serverStatus, setServerStatus] = useState<ServerStatus>('stopped');
     // Enemy source tracking (GSI draft / bot / manual / none) — drives auto-picker open
     const [enemySource, setEnemySource] = useState<EnemySource>('none');
+    const [heroCard, setHeroCard] = useState<HeroCardData | null>(null);
+    // A6.4: one fetch per (match, hero) — hero_id lands after hero select, so
+    // the key retries each hero_status until identity is real.
+    const heroCardKeyRef = useRef<string | null>(null);
     const [pickerOpen, setPickerOpen] = useState(false);
     const pickerAutoOpenedRef = useRef<boolean>(false);
     // v5.0 Phase 4: scouting form state — pre/mid-game role + lane + ally/enemy roles
@@ -124,6 +129,8 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
         deathSpotKeysRef.current = new Set();
         setYouIsNetWorth(false);
         setCheckin({ phase: 'idle', queuedAt: null });
+        setHeroCard(null);
+        heroCardKeyRef.current = null;
     }, []);
 
     const fireCheckin = useCallback(async () => {
@@ -296,6 +303,21 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
                         setGapSeries([]);
                         resetWave2State();
                     }
+                    // A6.4: personal hero card — the endpoint defaults to the
+                    // live hero and 404s honestly, so no card = no chip.
+                    const cardKey = hd.match_id && hd.hero_id
+                        ? `${hd.match_id}|${hd.hero_id}` : null;
+                    if (cardKey && heroCardKeyRef.current !== cardKey) {
+                        heroCardKeyRef.current = cardKey;
+                        fetch(`${RAIJIN_API}/api/hero-card`)
+                            .then(r => (r.ok ? r.json() : null))
+                            .then(d => {
+                                if (typeof d?.games === 'number' && d.games > 0) {
+                                    setHeroCard(d as HeroCardData);
+                                }
+                            })
+                            .catch(() => { /* engine offline / no data */ });
+                    }
                     const died = (hd.deaths ?? 0) > prevDeathsRef.current;
                     prevDeathsRef.current = hd.deaths ?? 0;
                     if ((hd.clock_time ?? -1) >= 0) {
@@ -411,6 +433,14 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
                 } else if (update.type === 'connection') {
                     const cd = update.data as any;
                     if (cd.patch_status) setPatchStatus(cd.patch_status);
+                    // :618 — /api/enemies pushes enemy_source here for an
+                    // instant badge sync; this case used to read patch only.
+                    if (cd.enemy_source) setEnemySource(cd.enemy_source);
+                    // :562 — a cap-refused check-in unwedges the button NOW,
+                    // not at the 90s timeout.
+                    if (cd.checkin === 'refused') {
+                        setCheckin(s => checkinNext(s, { type: 'error' }));
+                    }
                     // Respect a frozen review board — only blank when NOT reviewing.
                     if ('game_active' in cd && !cd.game_active && !gameEndedRef.current) {
                         setHeroData(null);
@@ -693,6 +723,7 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
             {liveBoard && heroData && (
                 <RaijinConsole
                     heroData={heroData}
+                    heroCard={heroCard}
                     recs={recs}
                     stance={stance}
                     timerRail={timerRail}

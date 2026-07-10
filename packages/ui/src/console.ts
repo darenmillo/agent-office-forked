@@ -241,6 +241,16 @@ export function deriveTapeEvents(
         if (rail.aegis?.expires_at !== undefined) {
             events.push({ key: 'aegis', label: 'AEGIS EXPIRES', tone: 'dire', secondsUntil: rail.aegis.expires_at - clock });
         }
+        // A6.2: enemy spike bands — the "(62% buy it)" tail stays on the
+        // briefing surfaces; the tape gets HERO + ITEM only.
+        for (const band of rail.spike_bands ?? []) {
+            events.push({
+                key: `spike-${band.hero}-${band.item}`,
+                label: band.label.split(' ≈')[0].toUpperCase(),
+                tone: 'dire',
+                secondsUntil: band.eta_minute * 60 - clock,
+            });
+        }
     }
     if (itemEta && itemEta.seconds > 0) {
         events.push({
@@ -257,7 +267,7 @@ export function deriveTapeEvents(
 
 // ── Wave 2: LLM read kinds, death verdicts, winnability, CHECK-IN ──────
 
-export type LlmKind = 'ambient' | 'checkin' | 'closing' | 'death-analysis';
+export type LlmKind = 'ambient' | 'checkin' | 'closing' | 'death-analysis' | 'read';
 
 /** Classify an LLM rec by its tags; null for rule-based recs. */
 export function llmKind(rec: Recommendation): LlmKind | null {
@@ -267,7 +277,9 @@ export function llmKind(rec: Recommendation): LlmKind | null {
     if (tags.includes('checkin')) return 'checkin';
     if (tags.includes('closing')) return 'closing';
     if (tags.includes('ambient')) return 'ambient';
-    return null;
+    if (tags.includes('read')) return 'read';
+    // untyped legacy llm rec — render as a generic read, never unstyled
+    return 'read';
 }
 
 export const LLM_KIND_LABEL: Record<LlmKind, string> = {
@@ -275,6 +287,7 @@ export const LLM_KIND_LABEL: Record<LlmKind, string> = {
     checkin: 'CHECK-IN',
     closing: 'CLOSING PLAN',
     'death-analysis': 'DEATH READ',
+    read: 'RAIJIN READ',
 };
 
 export interface VerdictBadge {

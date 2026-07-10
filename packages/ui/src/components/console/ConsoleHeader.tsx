@@ -5,7 +5,7 @@
 import React from 'react';
 import { console_ } from '../../raijinTheme';
 import { fmtMSS } from '../../console';
-import { HeroData } from '../../raijinTypes';
+import { HeroCardData, HeroData } from '../../raijinTypes';
 import { tnum } from './shared';
 
 interface Props {
@@ -22,6 +22,8 @@ interface Props {
     intelAgeMs: number | null;
     frozen: boolean;
     signalLostForMs: number | null;
+    /** A6.4: personal record on the live hero — null renders nothing (honest). */
+    heroCard?: HeroCardData | null;
     headerControls?: React.ReactNode;
 }
 
@@ -43,7 +45,7 @@ function LinkDot({ label, ageMs, freshS, agingS, fmt }: {
 export function ConsoleHeader({
     heroData, clock, roleLabel, bracket, patchVersion,
     allyScore, enemyScore, gsiAgeMs, llmAgeMs, intelAgeMs,
-    frozen, signalLostForMs, headerControls,
+    frozen, signalLostForMs, heroCard = null, headerControls,
 }: Props) {
     const metaBits = ['CONSOLE', patchVersion, bracket].filter(Boolean).join(' · ');
     return (
@@ -80,6 +82,17 @@ export function ConsoleHeader({
                         {heroData.hero_name.replace(/_/g, ' ').toUpperCase()}
                         {roleLabel ? ` · ${roleLabel}` : ''} · LV{' '}
                         <span style={{ color: console_.body }}>{heroData.level}</span>
+                    </span>
+                )}
+                {heroCard && heroCard.games > 0 && (
+                    <span style={{ color: console_.chrome, whiteSpace: 'nowrap' }}>
+                        {heroCard.games}G{' '}
+                        <span style={{ color: console_.body }}>{Math.round(heroCard.wr * 100)}%</span>
+                        {typeof heroCard.wr_delta === 'number' && (
+                            <span style={{ color: heroCard.wr_delta >= 0 ? console_.radiant : console_.dire }}>
+                                {' '}{heroCard.wr_delta >= 0 ? '+' : ''}{Math.round(heroCard.wr_delta * 100)} VS BRACKET
+                            </span>
+                        )}
                     </span>
                 )}
                 {allyScore !== null && enemyScore !== null && (

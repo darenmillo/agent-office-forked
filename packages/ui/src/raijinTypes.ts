@@ -184,6 +184,29 @@ export interface StanceData {
     inputs?: Record<string, unknown>;
 }
 
+/** A6.4: personal hero record from GET /api/hero-card. 404 = no data = no card. */
+export interface HeroCardData {
+    hero_id: number;
+    hero_name: string | null;
+    games: number;
+    wr: number;
+    avg_deaths?: number;
+    kda?: number;
+    gpm?: number;
+    /** Your WR minus bracket WR on this hero; absent when bracket unknown. */
+    wr_delta?: number;
+    bracket_wr?: number;
+}
+
+/** A6.2: enemy spike-forecast band riding the TIMERS rail (bracket medians). */
+export interface SpikeBand {
+    hero: string;
+    item: string;
+    /** Absolute game minute the bracket-median buyer has this item. */
+    eta_minute: number;
+    label: string;
+}
+
 /** v6: timer-rail snapshot (absolute game-clock values; UI extrapolates). */
 export interface TimerRailData {
     clock: number;
@@ -194,6 +217,7 @@ export interface TimerRailData {
     tormentor?: { status: 'pending' | 'respawning' | 'up'; at: number | null };
     roshan?: { status: 'unknown' | 'dead' | 'window' | 'up'; early: number | null; late: number | null };
     aegis?: { expires_at: number };
+    spike_bands?: SpikeBand[];
 }
 
 /** Per-player data from GC Bot GetRealtimeStats (~2 min delayed). */
