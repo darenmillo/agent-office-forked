@@ -81,6 +81,7 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
     const [settingsOpen, setSettingsOpen] = useState(false);
     // Phase 4: post-game report state
     const [postGameReport, setPostGameReport] = useState<PostGameReport | null>(null);
+    const [controlsLegendOpen, setControlsLegendOpen] = useState(false); // rc-audit row 39
     // v6 Phase 3: FARM/FIGHT/PUSH stance banner
     const [stance, setStance] = useState<StanceData | null>(null);
     // v6 Phase 12: timer rail + bracket badge + MMR trend
@@ -571,11 +572,13 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
     const liveBoard = !!heroData;
 
     // Compact console-header controls (live board): role letters + voice + gear.
+    // rc-audit row 39: the glyph cluster gets a visible affordance — a `?`
+    // toggle opens a legend naming every control (system chrome).
     const ROLE_LETTER: Record<Role, string> = {
         carry: 'C', mid: 'M', offlane: 'O', soft_support: '4', hard_support: '5',
     };
     const consoleControls = (
-        <span style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 'none' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 'none', position: 'relative' }}>
             <button
                 onClick={fireCheckin}
                 disabled={checkin.phase === 'queued'}
@@ -630,6 +633,40 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
             >
                 ⚙
             </button>
+            <button
+                onClick={() => setControlsLegendOpen(v => !v)}
+                aria-expanded={controlsLegendOpen}
+                aria-label="What do these controls do?"
+                style={{
+                    background: 'transparent', cursor: 'pointer',
+                    border: `1px solid ${controlsLegendOpen ? console_.amber : console_.line}`,
+                    fontFamily: console_.mono, fontSize: 10,
+                    color: controlsLegendOpen ? console_.amber : console_.chrome,
+                    padding: '2px 6px',
+                }}
+            >
+                ?
+            </button>
+            {controlsLegendOpen && (
+                <div
+                    role="note"
+                    style={{
+                        position: 'absolute', top: '100%', right: 0, marginTop: 8,
+                        zIndex: 40, background: console_.base2,
+                        border: `1px solid ${console_.line}`, borderRadius: 0,
+                        padding: '10px 14px', minWidth: 260,
+                        fontFamily: console_.mono, fontSize: 10.5,
+                        letterSpacing: '.08em', lineHeight: 2, color: console_.muted,
+                        whiteSpace: 'nowrap',
+                    }}
+                >
+                    <div style={{ color: console_.chrome, letterSpacing: '.22em', marginBottom: 2 }}>CONTROLS</div>
+                    <div><span style={{ color: console_.amber }}>CHECK-IN</span> — ask the coach for a full read now</div>
+                    <div><span style={{ color: console_.amber }}>C M O 4 5</span> — coach me as pos 1–5 (toggle)</div>
+                    <div><span style={{ color: console_.amber }}>VOICE</span> — mute / unmute the coach (Alt+M)</div>
+                    <div><span style={{ color: console_.amber }}>⚙</span> — settings (Alt+S)</div>
+                </div>
+            )}
         </span>
     );
 
@@ -691,7 +728,9 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
                 </div>
             )}
 
-            {/* Phase 1 (#11 bug d): frozen review chip — the board survived game end. */}
+            {/* Phase 1 (#11 bug d): frozen review chip — the board survived game
+                end. rc-audit row 48: system chrome — square, teal/amber, mono
+                caps; the blue rounded pill died with the ledger. */}
             {gameEnded && heroData && (
                 <div
                     role="status"
@@ -703,28 +742,31 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
                         display: 'flex',
                         alignItems: 'center',
                         gap: 12,
-                        background: bcast.panel,
-                        border: `1px solid ${bcast.blue}`,
-                        borderRadius: bcast.rSm,
-                        color: bcast.blue,
+                        background: console_.base2,
+                        border: `1px solid ${console_.amber}`,
+                        borderRadius: 0,
+                        color: console_.amber,
                         padding: '8px 16px',
-                        fontSize: bcast.tSub,
+                        fontFamily: console_.mono,
+                        fontSize: 11,
+                        letterSpacing: '.16em',
                         fontWeight: 600,
                         zIndex: 28,
                     }}
                 >
-                    MATCH ENDED — board frozen for review
+                    MATCH ENDED — FROZEN FOR REVIEW
                     <button
                         onClick={dismissFrozenBoard}
                         aria-label="Dismiss the frozen board"
                         style={{
                             background: 'transparent',
-                            border: `1px solid ${bcast.line}`,
-                            borderRadius: 6,
-                            color: bcast.ink,
+                            border: `1px solid ${console_.line}`,
+                            borderRadius: 0,
+                            color: console_.ink,
                             padding: '3px 10px',
-                            fontFamily: bcast.body,
-                            fontSize: bcast.tLabel,
+                            fontFamily: console_.mono,
+                            fontSize: 10,
+                            letterSpacing: '.14em',
                             cursor: 'pointer',
                         }}
                     >
@@ -761,6 +803,7 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
                     winnability={winnability}
                     youIsNetWorth={youIsNetWorth}
                     deathSpots={deathSpots}
+                    postGameReport={postGameReport}
                 />
             )}
 

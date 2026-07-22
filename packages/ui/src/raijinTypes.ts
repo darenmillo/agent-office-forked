@@ -305,6 +305,14 @@ export interface PostGameReport {
     /** Phase 5a: tri-state — null (not yet enriched), StructuredNarrative (new), or string (v4.0 back-compat). */
     narrative: StructuredNarrative | string | null;
     key_moments: Array<{ type: string; clock_time: number; wall_time: string; data: Record<string, unknown> }>;
+    /** rc-audit row 47 — deterministic postgame verdict (engine-computed,
+     *  zero LLM). All fields render-if-present; never fabricated. */
+    verdict?: {
+        what_lost_it?: string | null;
+        the_one_habit?: string | null;
+        next_drill?: string | null;
+        personal_line?: string | null;
+    } | null;
 }
 
 /** Phase 5c — Sonnet 4.6 per-death analysis, persists in the death panel across respawn. */
