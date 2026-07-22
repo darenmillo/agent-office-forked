@@ -77,8 +77,14 @@ export interface LlmRecMeta {
     delivered_alive?: boolean;
 }
 
+/** rc-audit R1 (row 31): engine honesty flags — additive. */
+export interface HonestyRecMeta {
+    /** The engine marked the net-worth figure in this rec as approximate. */
+    nw_approx?: boolean;
+}
+
 /** Additive per-rec metadata — engine populates the block matching the rec kind. */
-export type RecMeta = ItemRecMeta & DeathRecMeta & LlmRecMeta & Record<string, unknown>;
+export type RecMeta = ItemRecMeta & DeathRecMeta & LlmRecMeta & HonestyRecMeta & Record<string, unknown>;
 
 export interface Recommendation {
     category: 'ITEM' | 'SKILL' | 'TIMER' | 'FIGHT' | 'GENERAL';
@@ -250,6 +256,10 @@ export interface EnemyPlayerData {
     ultimate_state?: number | null;
     ultimate_cooldown?: number | null;
     respawn_timer?: number | null;
+    /** rc-audit leverage §2: the enemy's likely next purchases — top items
+     *  from the ENEMY-perspective high-MMR guide cache. Real-or-absent;
+     *  allies always []. */
+    predicted_build?: Array<{ item: string; count: number; n_builds: number }>;
 }
 
 /** Full match intel from GC Bot, broadcast every ~8s. */
@@ -261,6 +271,11 @@ export interface EnemyIntelData {
     radiant_tower_state: number;
     dire_tower_state: number;
     players: EnemyPlayerData[];
+    /** rc-audit leverage §1: per-enemy lane matchup vs YOUR hero. Hero-id
+     *  STRING keys; engine ships matches>=50 only; lane_win_rate null when
+     *  the denominator is 0. Copy law: render "win it only X%" — never the
+     *  inverse. */
+    lane_matchups?: Record<string, { matches: number; lane_win_rate: number | null; stomp_loss_rate: number }>;
 }
 
 export interface DimensionGrade {

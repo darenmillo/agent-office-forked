@@ -6,7 +6,7 @@
  *  without the position feed degrade to the schematic + real death count. */
 import React from 'react';
 import { console_ } from '../../raijinTheme';
-import { worldToMap } from '../../console';
+import { mapCaption, worldToMap } from '../../console';
 import { ZoneLabel, Micro } from './shared';
 
 const MAP_VB = 230;
@@ -77,11 +77,9 @@ export function Zone05Map({ deaths, deathSpots, heroX, heroY, alive }: Props) {
                 fontFamily: console_.reading, fontSize: console_.tCaption, lineHeight: 1.5,
                 color: console_.muted, textAlign: 'center', maxWidth: 320,
             }}>
-                {deaths > 0
-                    ? marks.length > 0
-                        ? <>▲ <b style={{ color: console_.body }}>{deaths} death{deaths === 1 ? '' : 's'}</b> — clusters are the habit to break.</>
-                        : <>▲ <b style={{ color: console_.body }}>{deaths} death{deaths === 1 ? '' : 's'}</b> this game — position marks land as deaths are recorded.</>
-                    : 'No deaths this game.'}
+                {/* rc-audit row 33: the caption states only what IS shown —
+                    no cluster promise until clusters actually render. */}
+                {mapCaption(deaths, marks.length)}
             </div>
         </div>
     );

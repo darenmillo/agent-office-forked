@@ -3,14 +3,25 @@
  *  Selection: highest net worth on the enemy team (GC intel). The intel-age
  *  stamp is mandatory and computed from the real receive time. The spike
  *  sentence renders ONLY when a matchup/knowledge-tagged rec mentions this
- *  hero — never a canned line. */
+ *  hero — never a canned line.
+ *
+ *  rc-audit R1 (rows 34/35/36/38 + Stratz leverage §1/§2):
+ *  - YOUR LANE 0:00–12:00: pre-lanes-end the zone leads with real lane
+ *    matchup rows (win-it-only X% · stomp risk) — then yields to the threat.
+ *  - Empty GC item slots collapse to one dim line; the enemy's likely next
+ *    purchases render from the high-MMR guide cache (real-or-absent).
+ *  - Roster tail: top-2 + '+N MORE'; the MANUAL badge keeps a reserved
+ *    corner. */
 import React from 'react';
 import { console_ } from '../../raijinTheme';
 import {
     EnemyIntelData, EnemyPlayerData, EnemySource, Recommendation,
     HERO_ICON_CDN, ITEM_ICON_CDN,
 } from '../../raijinTypes';
-import { fmtMSS } from '../../console';
+import {
+    fmtMSS, laneHonestLine, laneMatchupRows, laneRowLine, likelyNextLine,
+    normalizeDashes, rosterTail, zone07Mode,
+} from '../../console';
 import { ZoneLabel, tnum } from './shared';
 
 interface Props {
@@ -22,6 +33,9 @@ interface Props {
     onSourceClick: () => void;
     recs: Recommendation[];
     nowMs: number;
+    /** rc-audit rows 34/38: extrapolated game clock (s) — gates the lane
+     *  card's 0:00–12:00 window. Unwired → lane leads only pre-threat. */
+    clock?: number | null;
 }
 
 const SOURCE_LABEL: Record<EnemySource, string> = {
@@ -51,7 +65,7 @@ function spikeLineFor(threat: EnemyPlayerData, recs: Recommendation[]): string |
 
 export function Zone07Threat({
     enemyIntel, intelReceivedAt, myTeam, enemyHeroNames,
-    enemySource, onSourceClick, recs, nowMs,
+    enemySource, onSourceClick, recs, nowMs, clock = null,
 }: Props) {
     const enemies = (enemyIntel?.players ?? []).filter(
         p => myTeam && p.team && p.team.toLowerCase() !== myTeam.toLowerCase(),
@@ -62,12 +76,16 @@ export function Zone07Threat({
     const others = threat
         ? enemies.filter(p => p !== threat).sort((a, b) => b.net_worth - a.net_worth)
         : [];
+    const laneRows = laneMatchupRows(enemyIntel?.lane_matchups, enemies, 3);
+    const mode = zone07Mode(!!threat, laneRows.length, clock);
     const ageMs = intelReceivedAt !== null ? nowMs - intelReceivedAt : null;
     const ageColor = ageMs === null ? console_.ghost
         : ageMs > 150_000 ? console_.dire
         : ageMs > 60_000 ? console_.amber
         : console_.chrome;
     const spike = threat ? spikeLineFor(threat, recs) : null;
+    const likelyNext = threat ? likelyNextLine(threat.predicted_build) : null;
+    const honestLane = laneHonestLine(laneRows);
 
     const sourceBadge = (
         <button
@@ -78,7 +96,7 @@ export function Zone07Threat({
                 background: 'transparent', border: 'none', cursor: 'pointer',
                 fontSize: 10.5, letterSpacing: '.1em', fontFamily: console_.mono,
                 color: enemySource === 'none' ? console_.dire : console_.ghost,
-                padding: 0,
+                padding: 0, flex: 'none',
             }}
         >
             {SOURCE_LABEL[enemySource]}
@@ -88,14 +106,43 @@ export function Zone07Threat({
     return (
         <div style={{ padding: '16px 28px', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
             <ZoneLabel
-                label="07 · PRIMARY THREAT"
+                label={mode === 'lane' ? '07 · YOUR LANE — VS THIS LINEUP' : '07 · PRIMARY THREAT'}
                 right={
-                    <span style={{ fontSize: 10, letterSpacing: '.18em', color: ageColor, fontFamily: console_.mono, ...tnum }}>
-                        {ageMs !== null ? `INTEL ${fmtMSS(ageMs / 1000)} OLD` : 'NO INTEL'}
+                    <span style={{ fontSize: 10, letterSpacing: '.18em', color: mode === 'lane' ? console_.chrome : ageColor, fontFamily: console_.mono, ...tnum }}>
+                        {mode === 'lane' ? 'STRATZ · YOUR BRACKET'
+                            : ageMs !== null ? `INTEL ${fmtMSS(ageMs / 1000)} OLD` : 'NO INTEL'}
                     </span>
                 }
             />
-            {threat ? (
+            {mode === 'lane' ? (
+                <>
+                    <div style={{ marginTop: 12, fontSize: 10, letterSpacing: '.22em', color: console_.gold, fontFamily: console_.mono }}>
+                        0:00–12:00 · WIN YOUR LANE
+                    </div>
+                    <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 7 }}>
+                        {laneRows.map(row => (
+                            <div key={row.heroId} style={{
+                                fontSize: 12.5, fontFamily: console_.mono, letterSpacing: '.04em',
+                                color: console_.body, whiteSpace: 'nowrap', overflow: 'hidden',
+                                textOverflow: 'ellipsis', ...tnum,
+                            }}>
+                                {laneRowLine(row)}
+                            </div>
+                        ))}
+                    </div>
+                    {honestLane && (
+                        <div style={{
+                            marginTop: 10, paddingTop: 8, borderTop: `1px solid ${console_.line2}`,
+                            fontSize: 10.5, letterSpacing: '.14em', color: console_.amber, fontFamily: console_.mono, ...tnum,
+                        }}>
+                            {honestLane}
+                        </div>
+                    )}
+                    <div style={{ marginTop: 'auto', paddingTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
+                        {sourceBadge}
+                    </div>
+                </>
+            ) : mode === 'threat' && threat ? (
                 <>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 14 }}>
                         <img
@@ -115,26 +162,38 @@ export function Zone07Threat({
                                     LV {threat.level} · {(threat.net_worth / 1000).toFixed(1)}k
                                 </span>
                             </div>
-                            <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
-                                {Array.from({ length: 6 }).map((_, i) => {
-                                    const item = threat.items[i];
-                                    return item ? (
-                                        <img
-                                            key={i}
-                                            src={`${ITEM_ICON_CDN}/${item}.png`}
-                                            alt={item}
-                                            title={item.replace(/_/g, ' ')}
-                                            style={{ width: 30, height: 22, display: 'block', border: `1px solid ${console_.line2}` }}
-                                            onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                        />
-                                    ) : (
-                                        <span key={i} style={{
-                                            width: 30, height: 22, display: 'block',
-                                            border: `1px solid ${console_.line2}`, opacity: 0.6,
-                                        }} />
-                                    );
-                                })}
-                            </div>
+                            {threat.items.length > 0 ? (
+                                <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
+                                    {Array.from({ length: 6 }).map((_, i) => {
+                                        const item = threat.items[i];
+                                        return item ? (
+                                            <img
+                                                key={i}
+                                                src={`${ITEM_ICON_CDN}/${item}.png`}
+                                                alt={item}
+                                                title={item.replace(/_/g, ' ')}
+                                                style={{ width: 30, height: 22, display: 'block', border: `1px solid ${console_.line2}` }}
+                                                onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                            />
+                                        ) : (
+                                            <span key={i} style={{
+                                                width: 30, height: 22, display: 'block',
+                                                border: `1px solid ${console_.line2}`, opacity: 0.6,
+                                            }} />
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                // Row 35: absent GC data is one dim line, not six broken slots.
+                                <div style={{ marginTop: 6, fontSize: 10, letterSpacing: '.16em', color: console_.ghost, fontFamily: console_.mono }}>
+                                    ITEMS · AWAITING GC BOT
+                                </div>
+                            )}
+                            {likelyNext && (
+                                <div style={{ marginTop: 5, fontSize: 10.5, letterSpacing: '.1em', color: console_.amber, fontFamily: console_.mono, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', ...tnum }}>
+                                    {likelyNext}
+                                </div>
+                            )}
                         </div>
                     </div>
                     {spike && (
@@ -145,7 +204,7 @@ export function Zone07Threat({
                             display: '-webkit-box', WebkitLineClamp: 3,
                             WebkitBoxOrient: 'vertical' as never, overflow: 'hidden',
                         }}>
-                            {spike}
+                            {normalizeDashes(spike)}
                         </div>
                     )}
                     <div style={{
@@ -155,7 +214,7 @@ export function Zone07Threat({
                         fontFamily: console_.mono, ...tnum, minWidth: 0,
                     }}>
                         <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {others.map(p => `${displayName(p.hero_name).toUpperCase()} ${(p.net_worth / 1000).toFixed(1)}k`).join(' · ')}
+                            {rosterTail(others)}
                         </span>
                         {sourceBadge}
                     </div>

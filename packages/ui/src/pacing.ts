@@ -14,7 +14,7 @@
  * ordering. Everything is keyed on structured fields (category / tier / tags /
  * priority / urgency / receivedAt) — never on title text.
  */
-import { Recommendation, RecUrgency, effectiveUrgency } from './raijinTypes';
+import { Recommendation, RecUrgency, StanceData, effectiveUrgency } from './raijinTypes';
 
 export type Role = 'carry' | 'mid' | 'offlane' | 'soft_support' | 'hard_support';
 
@@ -164,19 +164,100 @@ export function visibleRecs(
     });
 }
 
+/** Shared cross-zone rec identity — the same category|title key the ingest
+ *  replacement uses (rc-audit rows 13/14: one rec, one home). */
+export const recKey = (r: Recommendation): string => `${r.category}|${r.title}`;
+
+/** rc-audit row 01: a FARM-order discipline rec (the stance engine's own
+ *  emission: GENERAL + tags 'stance' + CRITICAL) must not shout over a live
+ *  FIGHT stance. The engine demotes on resolve; this is the UI's fallback
+ *  guard. Suppression is deliberately scoped to FIGHT — the audited
+ *  contradiction — not PUSH (objective play is farm-adjacent). */
+function opposesStance(r: Recommendation, stance: StanceData | null | undefined): boolean {
+    return !!stance
+        && stance.stance === 'FIGHT'
+        && r.category === 'GENERAL'
+        && !!r.tags?.includes('stance')
+        && effectiveUrgency(r) === 'CRITICAL';
+}
+
 /** The ONE priority action: freshest high-signal rec inside a tight window. */
 export function pickPriorityAction(
     all: Recommendation[],
     now: number,
     role: Role | null = null,
+    stance: StanceData | null = null,
 ): Recommendation | null {
     const WINDOW = 120_000; // priority actions are NOW actions
     // Field F3 (2026-07-09): LLM reads never own the 52px directive — a long
     // "Raijin says (30 minute mark)" body truncates unreadably there. Reads
     // render on the PHOSPHOR card / log rows / death panel instead.
+    // rc-audit row 07: event announcements ('event' tag) are log/tape
+    // material, never an imperative — excluded here too.
     const fresh = all.filter(
-        r => now - (r.receivedAt ?? now) < WINDOW && !(r.tags ?? []).includes('llm'),
+        r => now - (r.receivedAt ?? now) < WINDOW
+            && !(r.tags ?? []).includes('llm')
+            && !(r.tags ?? []).includes('event')
+            && !opposesStance(r, stance),
     );
     if (!fresh.length) return null;
     return fresh.reduce((a, b) => (score(b, role) > score(a, role) ? b : a));
+}
+
+/** rc-audit row 13: the key currently owning Zone01 — Zone03 renders that rec
+ *  as a one-glyph reference row and Zone06's situational row skips it. */
+export function directiveOwnedKey(action: Recommendation | null): string | null {
+    return action ? recKey(action) : null;
+}
+
+/** rc-audit row 02: the red-dwell budget. CRITICAL holds takeover red for
+ *  90s from ONSET per rec key (re-fires of the same key — the TP nag every
+ *  150s — do NOT reset the clock), then decays to the amber CRITICAL
+ *  treatment. A genuinely new alarm (new key) re-arms red. */
+const RED_DWELL_MS = 90_000;
+const DWELL_KEEP = 24; // bounded memory — a game emits few distinct CRITICALs
+
+export class DwellTracker {
+    private onsets = new Map<string, number>();
+
+    state(key: string | null, nowMs: number): 'red' | 'amber' | null {
+        if (!key) return null;
+        let onset = this.onsets.get(key);
+        if (onset === undefined) {
+            onset = nowMs;
+            this.onsets.set(key, onset);
+            if (this.onsets.size > DWELL_KEEP) {
+                const first = this.onsets.keys().next().value;
+                if (first !== undefined) this.onsets.delete(first);
+            }
+        }
+        return nowMs - onset < RED_DWELL_MS ? 'red' : 'amber';
+    }
+}
+
+/** rc-audit row 03 (the belt; the engine re-emits live numbers as the
+ *  suspenders): a directive >60s old whose body embeds digits is flagged so
+ *  the card can wear a STALE chip instead of asserting an old number. */
+export function directiveIsStale(rec: Recommendation | null, nowMs: number): boolean {
+    if (!rec) return false;
+    return nowMs - (rec.receivedAt ?? nowMs) > 60_000 && /\d/.test(rec.body ?? '');
+}
+
+/** rc-audit row 25: the death panel's QUEUED list — non-death, non-CRITICAL
+ *  (those have their own homes), younger than 2 minutes, deduped by key,
+ *  newest first, capped at 3. */
+export function pruneQueued(recs: Recommendation[], nowMs: number): Recommendation[] {
+    const seen = new Set<string>();
+    return recs
+        .filter(r => !r.tags?.includes('death'))
+        .filter(r => effectiveUrgency(r) !== 'CRITICAL')
+        .filter(r => nowMs - (r.receivedAt ?? nowMs) < 120_000)
+        .sort((a, b) => (b.receivedAt ?? 0) - (a.receivedAt ?? 0))
+        .filter(r => {
+            const k = recKey(r);
+            if (seen.has(k)) return false;
+            seen.add(k);
+            return true;
+        })
+        .slice(0, 3);
 }

@@ -9,10 +9,11 @@
  * Data scope unchanged (per audit): GSI provides respawn/gold; the analysis
  * arrives as a death-tagged rec via the normal recommendations stream.
  */
-import React, { useMemo, useState, useEffect } from 'react';
-import { HeroData, Recommendation, effectiveUrgency } from '../raijinTypes';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { HeroData, Recommendation } from '../raijinTypes';
 import { bcast, bLabel, bNum, console_ } from '../raijinTheme';
 import { verdictBadge } from '../console';
+import { pruneQueued } from '../pacing';
 
 const VERDICT_COLOR = {
     radiant: bcast.radiant,
@@ -43,12 +44,9 @@ export function RaijinDeathPanel({ heroData, recommendations, onCheckin, checkin
         const headlineRec = sorted.find(
             r => !(r.tags?.includes('llm') && r.tags?.includes('analysis')),
         ) ?? null;
-        const now = Date.now();
-        const recentFlushed = recommendations
-            .filter(r => !r.tags?.includes('death'))
-            .filter(r => now - (r.receivedAt ?? now) < 10_000)
-            .filter(r => effectiveUrgency(r) !== 'CRITICAL')
-            .slice(0, 4);
+        // rc-audit row 25: age-out (>2min), dedupe by key, cap 3 — a min-5
+        // item never haunts a min-26 death.
+        const recentFlushed = pruneQueued(recommendations, Date.now());
         return { headline: headlineRec, extras: recentFlushed, coachSays: analysis };
     }, [recommendations]);
 
@@ -65,21 +63,35 @@ export function RaijinDeathPanel({ heroData, recommendations, onCheckin, checkin
     const dismissed = coachSays != null
         && dismissedCoachSaysId === (coachSays.receivedAt ?? 0);
 
+    // rc-audit row 27: depletion needs the death's FULL respawn as the scale —
+    // track the max seen for this death, reset on respawn.
+    const maxRespawnRef = useRef(0);
+    if (!heroData || heroData.alive) {
+        maxRespawnRef.current = 0;
+    } else if ((heroData.respawn_seconds ?? 0) > maxRespawnRef.current) {
+        maxRespawnRef.current = heroData.respawn_seconds ?? 0;
+    }
+
     if (!heroData) return null;
     if (alive && (!coachSaysFresh || dismissed)) return null;
 
     const gold = heroData.gold ?? 0;
     const respawn = heroData.respawn_seconds ?? 0;
+    const respawnPct = maxRespawnRef.current > 0
+        ? Math.max(0, Math.min(100, (respawn / maxRespawnRef.current) * 100))
+        : 0;
 
     return (
         <>
             <style>{`
                 @keyframes raijin-death-rise {
-                    from { opacity: 0; transform: translate(-50%, 10px); }
-                    to { opacity: 1; transform: translate(-50%, 0); }
+                    from { opacity: 0; transform: translateY(10px); }
+                    to { opacity: 1; transform: translateY(0); }
                 }
+                .raijin-death-depletion { transition: width 1s linear; }
                 @media (prefers-reduced-motion: reduce) {
                     .raijin-death-moment { animation: none !important; }
+                    .raijin-death-depletion { transition: none !important; }
                 }
             `}</style>
             <section
@@ -104,11 +116,13 @@ export function RaijinDeathPanel({ heroData, recommendations, onCheckin, checkin
                             zIndex: 15,
                             boxShadow: '0 12px 40px rgba(0,0,0,.45)',
                         }
+                        // rc-audit row 26: docked over the right rail (Zone07
+                        // area) — chart + stance stay visible during the one
+                        // readable moment. Above the tape at every width.
                         : {
                             position: 'absolute',
-                            top: 110,
-                            left: '50%',
-                            transform: 'translateX(-50%)',
+                            right: 24,
+                            bottom: 190,
                             width: 'min(560px, 44vw)',
                             padding: '18px 20px',
                             background: `radial-gradient(400px 160px at 12% 0%, rgba(255,89,100,.12), transparent 70%), ${bcast.panel}`,
@@ -153,6 +167,13 @@ export function RaijinDeathPanel({ heroData, recommendations, onCheckin, checkin
                                     color: bcast.dire,
                                 }}>
                                     {respawn}s
+                                </div>
+                                {/* rc-audit row 27: the countdown depletes visibly */}
+                                <div style={{ height: 3, background: bcast.line, marginTop: 6 }}>
+                                    <div
+                                        className="raijin-death-depletion"
+                                        style={{ height: '100%', width: `${respawnPct}%`, background: bcast.dire }}
+                                    />
                                 </div>
                             </div>
                             <div>

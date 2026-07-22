@@ -5,7 +5,10 @@
  * series only accumulates values that arrived over the wire, and tape events
  * are derived from the same TimerRailData the old rail rendered.
  */
-import { DeathVerdict, Recommendation, TimerRailData } from './raijinTypes';
+import {
+    DeathVerdict, EnemyPlayerData, ItemRecMeta, RecUrgency, Recommendation,
+    TimerRailData, effectiveUrgency,
+} from './raijinTypes';
 import { ageWindow } from './pacing';
 
 export const TAPE_HORIZON_S = 180;
@@ -92,6 +95,17 @@ export function extractGoldTarget(
         }
     }
     return null;
+}
+
+/** rc-audit row 14: true when the Zone01 directive IS the gold-target item —
+ *  Zone01 keeps the progress bar; Zone06 swaps its identical echo for
+ *  AFTER + pivot preview instead of repeating the same numbers 300px apart. */
+export function directiveIsGoldTarget(
+    action: Recommendation | null,
+    goldTarget: GoldTarget | null,
+): boolean {
+    return !!action && !!goldTarget
+        && `${action.category}|${action.title}` === goldTarget.recKey;
 }
 
 /** Seconds until the target is affordable at the current income. Null when
@@ -419,4 +433,176 @@ export function baselinePoints(series: ReadonlyArray<number | null> | null | und
         if (typeof v === 'number' && Number.isFinite(v)) out.push({ min: i, value: v });
     });
     return out;
+}
+
+// ── rc-audit R1 · U3 zone helpers ───────────────────────────────────────
+
+/** Row 09 — card anatomy = provenance. A Zone-06 slot occupant is the
+ *  'build' species ONLY when the engine slotted it AND supplied an item
+ *  slug (icon + chips can render). Everything else that lands in a slot
+ *  position — consumable/discipline nags — is the 'nag' species: amber
+ *  rule-line, no slot label, no item-card frame. */
+export type CardSpecies = 'build' | 'nag';
+export function cardSpecies(rec: Recommendation | null): CardSpecies | null {
+    if (!rec) return null;
+    return typeof rec.meta?.build_slot === 'string' && typeof rec.meta?.item === 'string'
+        ? 'build' : 'nag';
+}
+
+/** Rows 11/12 — mono stat chips from structured ITEM meta; only real values
+ *  render. compact drops MED before N (the AFTER column at tight widths). */
+export function itemChips(meta: ItemRecMeta, opts?: { compact?: boolean }): string[] {
+    const chips: string[] = [];
+    if (typeof meta.cost === 'number') chips.push(`${meta.cost}G`);
+    if (!opts?.compact && typeof meta.median_minute === 'number') {
+        chips.push(`MED ${Math.round(meta.median_minute)}'`);
+    }
+    if (typeof meta.win_rate === 'number') chips.push(`${Math.round(meta.win_rate * 100)}% WR`);
+    if (typeof meta.matches === 'number') {
+        chips.push(`N=${meta.matches >= 1000 ? `${(meta.matches / 1000).toFixed(1)}K` : meta.matches}`);
+    }
+    return chips;
+}
+
+/** Row 13 — cross-zone dedupe: a rec the directive owns renders only there. */
+export function filterDirectiveOwned<T extends Recommendation>(
+    recs: T[],
+    directiveKey: string | null | undefined,
+): T[] {
+    if (!directiveKey) return recs;
+    return recs.filter(r => `${r.category}|${r.title}` !== directiveKey);
+}
+
+/** Row 14 — when the directive IS the gold target, Zone06 swaps the NEXT
+ *  echo for AFTER + pivot preview; NEXT collapses to a slim reference. */
+export function mergeNextEcho(directiveIsGold: boolean, hasBuildNext: boolean): boolean {
+    return directiveIsGold && hasBuildNext;
+}
+
+// ── row 28: log decay ───────────────────────────────────────────────────
+
+/** Entries older than this compress to one-line footnotes. */
+export const LOG_FOOTNOTE_AGE_MS = 600_000;
+const LOG_DECAY_HALF_LIFE_MS = 240_000; // severity halves every 4 min
+const URGENCY_WEIGHT: Record<RecUrgency, number> = { CRITICAL: 3, IMPORTANT: 2, ROUTINE: 1 };
+
+export interface LogLayout { full: Recommendation[]; footnotes: Recommendation[]; }
+
+/** Recency × severity ordering: a decayed CRITICAL ranks below a fresh
+ *  IMPORTANT; >10-min entries become footnotes (a min-9 death at min 58 is
+ *  a footnote, not a headline). */
+export function logLayout(recs: Recommendation[], nowMs: number): LogLayout {
+    const full: Recommendation[] = [];
+    const footnotes: Recommendation[] = [];
+    for (const r of recs) {
+        (nowMs - (r.receivedAt ?? nowMs) > LOG_FOOTNOTE_AGE_MS ? footnotes : full).push(r);
+    }
+    const score = (r: Recommendation): number => {
+        const age = Math.max(0, nowMs - (r.receivedAt ?? nowMs));
+        return URGENCY_WEIGHT[effectiveUrgency(r)] * Math.pow(0.5, age / LOG_DECAY_HALF_LIFE_MS);
+    };
+    full.sort((a, b) => score(b) - score(a) || (b.receivedAt ?? 0) - (a.receivedAt ?? 0));
+    footnotes.sort((a, b) => (b.receivedAt ?? 0) - (a.receivedAt ?? 0));
+    return { full, footnotes };
+}
+
+/** Row 30 — dash normalization: space-delimited '--' / '- -' artifacts
+ *  become the system em-dash. Negative numbers + compound tokens survive. */
+export function normalizeDashes(text: string): string {
+    return text.replace(/(^|\s)(?:-\s-|--)(?=\s|$)/g, '$1—');
+}
+
+/** Row 33 — the map caption states only what IS shown; no cluster promise
+ *  until clusters actually render. */
+export function mapCaption(deaths: number, plottedMarks: number): string {
+    if (deaths <= 0) return 'No deaths this game.';
+    const n = `${deaths} death${deaths === 1 ? '' : 's'}`;
+    return plottedMarks > 0
+        ? `▲ ${n} — marked where they happened.`
+        : `▲ ${n} this game — position marks land as deaths are recorded.`;
+}
+
+// ── rows 34/38: the lane matchup card (Stratz leverage §1) ─────────────
+
+export interface LaneRow {
+    heroId: string;
+    name: string;
+    winPct: number | null;
+    stompPct: number;
+    matches: number;
+}
+
+/** Lane matchup rows, worst lane first (null win rates sink). Names resolve
+ *  via the intel roster — unresolvable ids are skipped (real-or-absent). */
+export function laneMatchupRows(
+    laneMatchups: Record<string, { matches: number; lane_win_rate: number | null; stomp_loss_rate: number }> | null | undefined,
+    players: ReadonlyArray<EnemyPlayerData> | null | undefined,
+    max = 3,
+): LaneRow[] {
+    if (!laneMatchups) return [];
+    const rows: LaneRow[] = [];
+    for (const [heroId, m] of Object.entries(laneMatchups)) {
+        const p = players?.find(pl => String(pl.hero_id) === heroId);
+        if (!p) continue;
+        rows.push({
+            heroId,
+            name: p.hero_name.replace(/^npc_dota_hero_/, '').replace(/_/g, ' '),
+            winPct: typeof m.lane_win_rate === 'number' ? Math.round(m.lane_win_rate * 100) : null,
+            stompPct: Math.round(m.stomp_loss_rate * 100),
+            matches: m.matches,
+        });
+    }
+    rows.sort((a, b) => (a.winPct ?? 101) - (b.winPct ?? 101));
+    return rows.slice(0, max);
+}
+
+/** Copy law (meta_store doc rule): "win it only X%" — never the inverse. */
+export function laneRowLine(row: LaneRow): string {
+    const name = row.name.toUpperCase();
+    const n = row.matches >= 1000 ? `${(row.matches / 1000).toFixed(1)}K` : `${row.matches}`;
+    return row.winPct !== null
+        ? `${name} — win it only ${row.winPct}% · stomp risk ${row.stompPct}% (N=${n})`
+        : `${name} — stomp risk ${row.stompPct}% (N=${n})`;
+}
+
+/** The one honest line: who stomps you most. */
+export function laneHonestLine(rows: LaneRow[]): string | null {
+    if (!rows.length) return null;
+    const worst = rows.reduce((a, b) => (b.stompPct > a.stompPct ? b : a));
+    return `HIGHEST STOMP RISK: ${worst.name.toUpperCase()} ${worst.stompPct}%`;
+}
+
+/** Row 35 — the enemy's likely next purchases, real-or-absent. */
+export function likelyNextLine(
+    predicted: ReadonlyArray<{ item: string; count: number; n_builds: number }> | null | undefined,
+    max = 2,
+): string | null {
+    if (!predicted || predicted.length === 0) return null;
+    const top = [...predicted].sort((a, b) => b.count - a.count).slice(0, max);
+    const names = top.map(p => p.item.replace(/_/g, ' ').toUpperCase()).join(' · ');
+    return `LIKELY NEXT: ${names} — HIGH-MMR n=${top[0].n_builds}`;
+}
+
+/** Row 36 — roster tail: top-2 by net worth + '+N MORE'. */
+export function rosterTail(
+    others: ReadonlyArray<{ hero_name: string; net_worth: number }>,
+    maxNames = 2,
+): string {
+    const sorted = [...others].sort((a, b) => b.net_worth - a.net_worth);
+    const shown = sorted.slice(0, maxNames).map(p =>
+        `${p.hero_name.replace(/^npc_dota_hero_/, '').replace(/_/g, ' ').toUpperCase()} ${(p.net_worth / 1000).toFixed(1)}k`);
+    const extra = sorted.length - shown.length;
+    return shown.join(' · ') + (extra > 0 ? ` · +${extra} MORE` : '');
+}
+
+// ── rows 34/38: zone-07 mode ───────────────────────────────────────────
+
+/** The lane card leads until lanes end, then yields to the threat. */
+export const LANE_CARD_UNTIL_S = 720;
+export type Zone07Mode = 'lane' | 'threat' | 'awaiting';
+export function zone07Mode(hasThreat: boolean, laneRowCount: number, clock: number | null): Zone07Mode {
+    const laneWindow = clock === null ? !hasThreat : clock <= LANE_CARD_UNTIL_S;
+    if (laneRowCount > 0 && laneWindow) return 'lane';
+    if (hasThreat) return 'threat';
+    return 'awaiting';
 }

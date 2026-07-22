@@ -106,7 +106,7 @@ export function RaijinConsole({
             : heroData.clock_time ?? null;
 
     // Derived: directive pick, gold target, tape events.
-    const action = pickPriorityAction(recs, nowMs, role);
+    const action = pickPriorityAction(recs, nowMs, role, stance); // rc-audit row 01: stance-aware arbiter
     const goldTarget = extractGoldTarget(recs, nowMs);
     const eta = goldTarget ? goldEtaSeconds(goldTarget, heroData.gold, heroData.gpm) : null;
     const itemEta = goldTarget && eta !== null && eta > 0

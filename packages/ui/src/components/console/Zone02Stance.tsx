@@ -23,30 +23,46 @@ export function Zone02Stance({ stance }: { stance: StanceData | null }) {
             <ZoneLabel
                 label="02 · STANCE"
                 right={stance ? (
+                    // rc-audit row 08: CONF only — the lock chip moved onto the
+                    // stance word row (reserved, never clipped at the edge).
                     <span style={{
                         fontSize: 11, letterSpacing: '.14em', color: console_.chrome,
-                        fontFamily: console_.mono,
+                        fontFamily: console_.mono, whiteSpace: 'nowrap', flexShrink: 0,
                     }}>
                         CONF <span style={{ color: console_.body, ...tnum }}>{Math.round(stance.confidence * 100)}%</span>
-                        {stance.discipline ? ' · DISCIPLINE LOCK' : ''}
                     </span>
                 ) : undefined}
             />
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 28, marginTop: 10 }}>
                 {STANCES.map(s => {
                     const active = stance?.stance === s;
+                    // rc-audit row 01: under a discipline lock the stance word
+                    // dims — the directive is the one voice; this zone reads
+                    // as a locked state, never a second imperative.
+                    const locked = active && !!stance?.discipline;
                     return (
                         <span key={s} style={{
                             fontFamily: console_.display,
                             fontSize: active ? console_.tStance : console_.tStanceAlt,
                             fontWeight: active ? 700 : 600,
-                            color: active ? consoleStanceColor(s) : console_.ghost,
+                            color: locked ? console_.muted
+                                : active ? consoleStanceColor(s) : console_.ghost,
                             letterSpacing: active ? '.04em' : '.06em',
                         }}>
                             {s}
                         </span>
                     );
                 })}
+                {stance?.discipline && (
+                    <span style={{
+                        fontSize: 10, letterSpacing: '.2em', color: console_.amber,
+                        fontFamily: console_.mono, border: `1px solid ${console_.amber}55`,
+                        padding: '2px 8px', whiteSpace: 'nowrap', flexShrink: 0,
+                        alignSelf: 'center',
+                    }}>
+                        DISCIPLINE LOCK
+                    </span>
+                )}
                 {!stance && (
                     <span style={{
                         fontSize: 11, letterSpacing: '.18em', color: console_.ghost,

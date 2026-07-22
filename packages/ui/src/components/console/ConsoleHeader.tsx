@@ -25,6 +25,10 @@ interface Props {
     /** A6.4: personal record on the live hero — null renders nothing (honest). */
     heroCard?: HeroCardData | null;
     headerControls?: React.ReactNode;
+    /** rc-audit row 40 — ≤1152px: the wordmark collapses to the R glyph and
+     *  the meta line yields; GSI/INTEL keep tabular width; SCORE shrinks
+     *  last. Wire with `scale <= 0.601` (1152/1920). */
+    compact?: boolean;
 }
 
 function LinkDot({ label, ageMs, freshS, agingS, fmt }: {
@@ -46,26 +50,29 @@ export function ConsoleHeader({
     heroData, clock, roleLabel, bracket, patchVersion,
     allyScore, enemyScore, gsiAgeMs, llmAgeMs, intelAgeMs,
     frozen, signalLostForMs, heroCard = null, headerControls,
+    compact = false,
 }: Props) {
     const metaBits = ['CONSOLE', patchVersion, bracket].filter(Boolean).join(' · ');
     return (
         <div style={{
-            display: 'grid', gridTemplateColumns: '620px minmax(0,1fr)',
+            display: 'grid', gridTemplateColumns: compact ? '120px minmax(0,1fr)' : '620px minmax(0,1fr)',
             borderBottom: `1px solid ${console_.line}`,
         }}>
             <div style={{
-                display: 'flex', alignItems: 'center', gap: 24, padding: '0 32px',
+                display: 'flex', alignItems: 'center', gap: 24, padding: compact ? '0 18px' : '0 32px',
                 borderRight: `1px solid ${console_.line}`,
             }}>
                 <span style={{
                     fontFamily: console_.display, fontSize: 18, fontWeight: 700,
-                    letterSpacing: '.3em', color: console_.amber,
+                    letterSpacing: compact ? '.1em' : '.3em', color: console_.amber,
                 }}>
-                    RAIJIN
+                    {compact ? 'R' : 'RAIJIN'}
                 </span>
-                <span style={{ fontSize: 11, letterSpacing: '.18em', color: console_.chrome }}>
-                    {metaBits}
-                </span>
+                {!compact && (
+                    <span style={{ fontSize: 11, letterSpacing: '.18em', color: console_.chrome }}>
+                        {metaBits}
+                    </span>
+                )}
             </div>
             <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',

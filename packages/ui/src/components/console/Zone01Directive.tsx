@@ -5,10 +5,11 @@
  *  CRITICAL takeover (Round-2 B/CUT language): a fresh CRITICAL directive
  *  gets the red top rule + mono CRITICAL strip + oversized directive. One
  *  alarm at a time — this zone is the only place the board goes red. */
-import React from 'react';
+import React, { useRef } from 'react';
 import { console_ } from '../../raijinTheme';
 import { HeroData, Recommendation, effectiveUrgency } from '../../raijinTypes';
 import { GoldTarget, goldEtaSeconds, fmtMSS } from '../../console';
+import { DwellTracker, directiveIsStale, recKey } from '../../pacing';
 import { ZoneLabel, StatusFlag, PulseDot, tnum } from './shared';
 
 /** A CRITICAL directive runs at takeover intensity while younger than this. */
@@ -26,23 +27,37 @@ interface Props {
 
 export function Zone01Directive({ action, heroData, goldTarget, clock, nowMs }: Props) {
     const urgency = action ? effectiveUrgency(action) : 'ROUTINE';
-    const critical = urgency === 'CRITICAL';
-    const cutTakeover = critical && !!action
-        && nowMs - (action.receivedAt ?? 0) < CUT_FRESH_MS;
+    // rc-audit row 02: red is budgeted. A CRITICAL key holds true red for 90s
+    // from onset, then decays to the amber CRITICAL treatment; only a NEW
+    // alarm (new key) re-arms red. Kills the 36-minute wallpaper.
+    const dwellRef = useRef(new DwellTracker());
+    const rawCritical = urgency === 'CRITICAL';
+    const dwell = rawCritical && action ? dwellRef.current.state(recKey(action), nowMs) : null;
+    const critical = rawCritical && dwell === 'red';
+    const criticalDecayed = rawCritical && dwell === 'amber';
     const dead = !heroData.alive;
+    const cutTakeover = !dead && critical && !!action
+        && nowMs - (action.receivedAt ?? 0) < CUT_FRESH_MS;
+    const stale = directiveIsStale(action, nowMs); // row 03 belt
     const gold = heroData.gold;
     const targetReached = !!goldTarget && gold >= goldTarget.cost;
     const eta = goldTarget ? goldEtaSeconds(goldTarget, gold, heroData.gpm) : null;
     const goldPct = goldTarget ? Math.min(100, (gold / goldTarget.cost) * 100) : 0;
 
-    const flag = critical || dead
-        ? <StatusFlag color={console_.dire} anim="d" label={dead ? 'DEAD' : 'CRITICAL'} />
-        : targetReached
-            ? <StatusFlag color={console_.radiant} anim="a" label="SPIKE REACHED" />
-            : <StatusFlag color={console_.amber} anim="a" label="LIVE" />;
+    // rc-audit row 06: while the death panel is up it IS the critical surface —
+    // this zone drops to a dim echo (flag included). One red surface, literally.
+    const flag = dead
+        ? <StatusFlag color={console_.muted} anim="d" label="DEAD" />
+        : critical
+            ? <StatusFlag color={console_.dire} anim="d" label="CRITICAL" />
+            : criticalDecayed
+                ? <StatusFlag color={console_.amber} anim="d" label="CRITICAL" />
+                : targetReached
+                    ? <StatusFlag color={console_.radiant} anim="a" label="SPIKE REACHED" />
+                    : <StatusFlag color={console_.amber} anim="a" label="LIVE" />;
 
     const directiveText = dead
-        ? <>SPEND <span style={{ color: console_.dire, ...tnum }}>{gold}G</span> BEFORE RESPAWN</>
+        ? '→ SEE RESPAWN PANEL'
         : action
             ? action.title
             : 'NO LIVE CALL — PLAY YOUR GAME';
@@ -51,7 +66,7 @@ export function Zone01Directive({ action, heroData, goldTarget, clock, nowMs }: 
     const directiveLen = typeof directiveText === 'string' ? directiveText.length : 30;
 
     const whyText = dead
-        ? 'Buying from the fountain shop converts dead time into your next timing.'
+        ? 'Respawn coaching is on the panel — spend plan, verdict, check-in.'
         : action
             ? (action.reason || action.body)
             : 'The next read lands here.';
@@ -96,7 +111,11 @@ export function Zone01Directive({ action, heroData, goldTarget, clock, nowMs }: 
                     lineHeight: directiveLen > 60 ? 1.2 : 1.02,
                     fontWeight: 700,
                     margin: '16px 0 12px',
-                    color: critical || dead ? console_.dire : action ? console_.ink : console_.ghost,
+                    // dead = dim echo (row 06); decayed CRITICAL = amber (row 02)
+                    color: dead ? console_.ghost
+                        : critical ? console_.dire
+                        : criticalDecayed ? console_.amber
+                        : action ? console_.ink : console_.ghost,
                     letterSpacing: cutTakeover ? '-.005em' : '.005em',
                     textTransform: 'uppercase',
                     overflowWrap: 'break-word',
@@ -111,6 +130,17 @@ export function Zone01Directive({ action, heroData, goldTarget, clock, nowMs }: 
                     overflowWrap: 'break-word',
                 }}>
                     {whyText}
+                    {stale && !dead && (
+                        // row 03: numbers older than 60s stop asserting.
+                        <span style={{
+                            marginLeft: 8, fontSize: 10, letterSpacing: '.18em',
+                            fontFamily: console_.mono, color: console_.chrome,
+                            border: `1px solid ${console_.line}`, padding: '1px 5px',
+                            verticalAlign: 'middle',
+                        }}>
+                            STALE {Math.round((nowMs - (action?.receivedAt ?? nowMs)) / 1000)}S
+                        </span>
+                    )}
                 </p>
             )}
             <div style={{ marginTop: 18 }}>
