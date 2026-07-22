@@ -54,6 +54,8 @@ export interface ItemRecMeta {
     win_rate?: number;
     matches?: number;
     share?: number;
+    /** Zone 06 slot the engine assigned this rec ('next' | 'after' | 'pivot'). */
+    build_slot?: 'next' | 'after' | 'pivot';
 }
 
 /** Trade-ledger block on death recs. */

@@ -14,6 +14,7 @@ import {
     gapSlopePerMin,
     roshTapeState,
     deriveTapeEvents,
+    selectBuildSlots,
     GapPoint,
 } from './console';
 import { Recommendation, TimerRailData } from './raijinTypes';
@@ -30,6 +31,42 @@ function rec(partial: Partial<Recommendation>): Recommendation {
         ...partial,
     };
 }
+
+describe('selectBuildSlots (B5)', () => {
+    const slotRec = (title: string, slot?: 'next' | 'after' | 'pivot') =>
+        rec({ title, meta: slot ? { item: title, build_slot: slot } : { item: title } });
+
+    test('slot-aware: build_slot claims win regardless of position, >2 pivots truncate', () => {
+        const s = selectBuildSlots([
+            slotRec('pivot-a', 'pivot'),
+            slotRec('after-x', 'after'),
+            slotRec('next-x', 'next'),
+            slotRec('pivot-b', 'pivot'),
+            slotRec('pivot-c', 'pivot'),
+        ]);
+        expect(s.next?.title).toBe('next-x');
+        expect(s.after?.title).toBe('after-x');
+        expect(s.pivots.map(r => r.title)).toEqual(['pivot-a', 'pivot-b']);
+    });
+
+    test('positional fallback preserves legacy semantics when nothing is slotted', () => {
+        const s = selectBuildSlots([slotRec('a'), slotRec('b'), slotRec('c'), slotRec('d'), slotRec('e')]);
+        expect(s.next?.title).toBe('a');
+        expect(s.after?.title).toBe('b');
+        expect(s.pivots.map(r => r.title)).toEqual(['c', 'd']);
+    });
+
+    test('mixed: slotless recs fill only unclaimed slots, in order, never displacing a claimant', () => {
+        const s = selectBuildSlots([slotRec('legacy-1'), slotRec('next-x', 'next'), slotRec('legacy-2')]);
+        expect(s.next?.title).toBe('next-x');
+        expect(s.after?.title).toBe('legacy-1');
+        expect(s.pivots.map(r => r.title)).toEqual(['legacy-2']);
+    });
+
+    test('empty input -> all slots empty', () => {
+        expect(selectBuildSlots([])).toEqual({ next: null, after: null, pivots: [] });
+    });
+});
 
 describe('tape math', () => {
     test('position is a linear % of the 180s horizon', () => {

@@ -106,6 +106,38 @@ export function goldEtaSeconds(
     return ((target.cost - gold) / gpm) * 60;
 }
 
+// ── Zone 06 build slots (B5) ───────────────────────────────────────────
+
+export interface BuildSlots {
+    next: Recommendation | null;
+    after: Recommendation | null;
+    pivots: Recommendation[];
+}
+
+/** Slot-aware Zone 06 selection: engine-declared `meta.build_slot` claims win;
+ *  when nothing in the list is slotted, the legacy positional read applies
+ *  (index 0 / 1 / 2–3); mixed lists fill only the UNCLAIMED slots with
+ *  slotless recs in arrival order — a slotless rec never displaces a claimant. */
+export function selectBuildSlots(itemRecs: Recommendation[]): BuildSlots {
+    const slotted = itemRecs.filter(r => typeof r.meta?.build_slot === 'string');
+    if (!slotted.length) {
+        return {
+            next: itemRecs[0] ?? null,
+            after: itemRecs[1] ?? null,
+            pivots: itemRecs.slice(2, 4),
+        };
+    }
+    let next = slotted.find(r => r.meta?.build_slot === 'next') ?? null;
+    let after = slotted.find(r => r.meta?.build_slot === 'after') ?? null;
+    const pivots = slotted.filter(r => r.meta?.build_slot === 'pivot').slice(0, 2);
+    const slotless = itemRecs.filter(r => typeof r.meta?.build_slot !== 'string');
+    let i = 0;
+    if (!next && i < slotless.length) next = slotless[i++];
+    if (!after && i < slotless.length) after = slotless[i++];
+    while (pivots.length < 2 && i < slotless.length) pivots.push(slotless[i++]);
+    return { next, after, pivots };
+}
+
 // ── Gap series (Zone 04) ───────────────────────────────────────────────
 
 export interface GapPoint {

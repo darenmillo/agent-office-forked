@@ -7,7 +7,7 @@
 import React, { useState } from 'react';
 import { console_ } from '../../raijinTheme';
 import { ITEM_ICON_CDN, ItemRecMeta, Recommendation } from '../../raijinTypes';
-import { GoldTarget, fmtMSS } from '../../console';
+import { GoldTarget, fmtMSS, selectBuildSlots } from '../../console';
 import { asOf } from '../../raijinTheme';
 import { ZoneLabel, Micro, tnum } from './shared';
 
@@ -57,9 +57,8 @@ interface Props {
 }
 
 export function Zone06Build({ itemRecs, gold, goldTarget, intelReceivedAt, clock, nowMs }: Props) {
-    const next = itemRecs[0] ?? null;
-    const after = itemRecs[1] ?? null;
-    const pivots = itemRecs.slice(2, 4);
+    // B5: engine-declared meta.build_slot wins; positional fallback when absent.
+    const { next, after, pivots } = selectBuildSlots(itemRecs);
     const intelClock = intelReceivedAt !== null && clock !== null
         ? Math.max(0, clock - (nowMs - intelReceivedAt) / 1000)
         : null;

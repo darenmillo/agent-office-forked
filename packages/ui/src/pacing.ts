@@ -38,6 +38,13 @@ function isKnowledge(r: Recommendation): boolean {
 /** Max cards kept in the store (was a bare .slice(0, 50)). */
 const STORE_CAP = 50;
 
+/** Zone 06 build slot on an ITEM rec ('next' | 'after' | 'pivot'), if declared. */
+function itemSlot(r: Recommendation): string | undefined {
+    return r.category === 'ITEM' && typeof r.meta?.build_slot === 'string'
+        ? r.meta.build_slot
+        : undefined;
+}
+
 /** Merge incoming recs into the store with displacement semantics. */
 export function ingestRecs(
     prev: Recommendation[],
@@ -48,8 +55,21 @@ export function ingestRecs(
     const stamped = incoming.map(r => ({ ...r, receivedAt: r.receivedAt ?? now }));
 
     const newSkill = stamped.some(r => r.category === 'SKILL');
-    const newItemPriorities = stamped.filter(r => r.category === 'ITEM').map(r => r.priority);
-    const minNewItemPrio = newItemPriorities.length ? Math.min(...newItemPriorities) : Infinity;
+    // B5 slot-keyed displacement: a build rec (meta.build_slot) evicts only its
+    // own slot and its own item; the legacy min-priority sweep now runs strictly
+    // slotless-vs-slotless, so a p4 pickup can't wipe the Zone 06 build path.
+    const slottedIn = stamped.filter(r => itemSlot(r) !== undefined);
+    const inSlots = new Set(slottedIn.map(itemSlot));
+    const inSlotItems = new Set(
+        slottedIn.map(r => r.meta?.item).filter((s): s is string => typeof s === 'string'),
+    );
+    const slotlessItemPrios = stamped
+        .filter(r => r.category === 'ITEM' && itemSlot(r) === undefined)
+        .map(r => r.priority);
+    // -Infinity sentinel: no incoming slotless ITEM -> no sweep at all. (The old
+    // Infinity sentinel made ANY item-less batch wipe every ITEM card — the
+    // Zone 06 blanking disease.)
+    const minNewItemPrio = slotlessItemPrios.length ? Math.min(...slotlessItemPrios) : -Infinity;
     const newLiveCoaching = stamped.some(isLiveCoaching);
     // Same-key replacement: a rec with the same category+title is an update.
     const incomingKeys = new Set(stamped.map(r => `${r.category}|${r.title}`));
@@ -57,7 +77,12 @@ export function ingestRecs(
     const kept = prev.filter(old => {
         if (incomingKeys.has(`${old.category}|${old.title}`)) return false;
         if (old.category === 'SKILL' && newSkill) return false;
-        if (old.category === 'ITEM' && old.priority < minNewItemPrio) return false;
+        if (old.category === 'ITEM') {
+            const slot = itemSlot(old);
+            if (slot !== undefined && inSlots.has(slot)) return false;
+            if (typeof old.meta?.item === 'string' && inSlotItems.has(old.meta.item)) return false;
+            if (slot === undefined && old.priority < minNewItemPrio) return false;
+        }
         if (newLiveCoaching && isLiveCoaching(old)) return false; // one live voice at a time
         return true;
     });
@@ -75,6 +100,7 @@ const CATEGORY_WINDOW: Record<Recommendation['category'], number> = {
     GENERAL: 360_000, // 6 min — live coaching decays
 };
 const KNOWLEDGE_WINDOW = 1_200_000; // 20 min — patch tips / hero knowledge
+const BUILD_WINDOW = 900_000; // 15 min — the Zone 06 build path persists (B5)
 
 /** Urgency shelf lives (ms): CRITICAL is stale FAST (the moment passed). */
 const URGENCY_WINDOW: Record<RecUrgency, number> = {
@@ -83,14 +109,23 @@ const URGENCY_WINDOW: Record<RecUrgency, number> = {
     ROUTINE: 720_000,
 };
 
+/** Build-path cards (engine tags 'build') — Zone 06's persistent feed. */
+function isBuild(r: Recommendation): boolean {
+    return r.category === 'ITEM' && !!r.tags?.includes('build');
+}
+
 export function ageWindow(rec: Recommendation): number {
+    // B5: build cards ride engine re-emission, not urgency — the urgency cap
+    // would blank Zone 06 between re-emits (IMPORTANT would cut 15min to 8).
+    if (isBuild(rec)) return BUILD_WINDOW;
     const cat = isKnowledge(rec) ? KNOWLEDGE_WINDOW : (CATEGORY_WINDOW[rec.category] ?? 300_000);
     return Math.min(cat, URGENCY_WINDOW[effectiveUrgency(rec)]);
 }
 
 /** Per-category display budgets (post-age-filter, best-first). */
 const CATEGORY_BUDGET: Record<Recommendation['category'], number> = {
-    ITEM: 4, FIGHT: 5, SKILL: 1, TIMER: 4, GENERAL: 6,
+    // ITEM = 6 so NEXT + AFTER + two pivots coexist with legacy pickups (B5).
+    ITEM: 6, FIGHT: 5, SKILL: 1, TIMER: 4, GENERAL: 6,
 };
 
 const URGENCY_RANK: Record<RecUrgency, number> = { CRITICAL: 2, IMPORTANT: 1, ROUTINE: 0 };
