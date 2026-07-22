@@ -36,7 +36,8 @@
         "globals": {
             "ts-jest": {
                 "tsconfig": {
-                    "strict": false
+                    "strict": false,
+                    "jsx": "react"
                 }
             }
         }

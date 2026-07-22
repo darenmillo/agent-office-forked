@@ -1,9 +1,11 @@
-/** THE READ — PHOSPHOR-language card for a fresh CHECK-IN or CLOSING-PLAN
- *  answer (Round-2 C: the amber-monochrome register is "the coach speaking").
+/** THE READ — PHOSPHOR-language card for a fresh CHECK-IN, CLOSING-PLAN, or
+ *  BUILD READ answer (Round-2 C: the amber-monochrome register is "the coach
+ *  speaking"; B6 adds the build WHY).
  *
- *  Renders the newest fresh (≤60s) checkin/closing rec above the log; ambient
- *  reads stay as ordinary log rows. Latency honesty on the card: the measured
- *  call latency and an ON-RESPAWN badge when the answer arrived post-mortem. */
+ *  Renders the newest fresh (≤60s) checkin/closing/build rec above the log;
+ *  ambient reads stay as ordinary log rows. Latency honesty on the card: the
+ *  measured call latency and an ON-RESPAWN badge when the answer arrived
+ *  post-mortem. */
 import React from 'react';
 import { console_ } from '../../raijinTheme';
 import { Recommendation } from '../../raijinTypes';
@@ -12,12 +14,12 @@ import { tnum } from './shared';
 
 const FRESH_MS = 60_000;
 
-/** Newest fresh checkin/closing rec, or null. */
+/** Newest fresh checkin/closing/build rec, or null. */
 export function pickReadCard(recs: Recommendation[], nowMs: number): Recommendation | null {
     const candidates = recs
         .filter(r => {
             const kind = llmKind(r);
-            return kind === 'checkin' || kind === 'closing';
+            return kind === 'checkin' || kind === 'closing' || kind === 'build';
         })
         .filter(r => nowMs - (r.receivedAt ?? 0) < FRESH_MS)
         .sort((a, b) => (b.receivedAt ?? 0) - (a.receivedAt ?? 0));

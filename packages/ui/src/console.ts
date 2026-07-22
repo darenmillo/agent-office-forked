@@ -299,7 +299,7 @@ export function deriveTapeEvents(
 
 // ── Wave 2: LLM read kinds, death verdicts, winnability, CHECK-IN ──────
 
-export type LlmKind = 'ambient' | 'checkin' | 'closing' | 'death-analysis' | 'read';
+export type LlmKind = 'ambient' | 'checkin' | 'closing' | 'death-analysis' | 'read' | 'build';
 
 /** Classify an LLM rec by its tags; null for rule-based recs. */
 export function llmKind(rec: Recommendation): LlmKind | null {
@@ -309,6 +309,10 @@ export function llmKind(rec: Recommendation): LlmKind | null {
     if (tags.includes('checkin')) return 'checkin';
     if (tags.includes('closing')) return 'closing';
     if (tags.includes('ambient')) return 'ambient';
+    // B6: semantic kinds above win over a stray build tag; build beats the
+    // generic read register (Zone06 build ITEM cards carry no 'llm' tag and
+    // never reach here).
+    if (tags.includes('build')) return 'build';
     if (tags.includes('read')) return 'read';
     // untyped legacy llm rec — render as a generic read, never unstyled
     return 'read';
@@ -320,6 +324,7 @@ export const LLM_KIND_LABEL: Record<LlmKind, string> = {
     closing: 'CLOSING PLAN',
     'death-analysis': 'DEATH READ',
     read: 'RAIJIN READ',
+    build: 'BUILD READ',
 };
 
 // A-7: pulse-check strip — row register per event kind. Failures always

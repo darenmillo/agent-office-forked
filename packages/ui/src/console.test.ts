@@ -248,6 +248,44 @@ describe('llmKind', () => {
     });
 });
 
+// ── B6: BUILD READ ─────────────────────────────────────────────────────
+import { LLM_KIND_LABEL } from './console';
+import { pickReadCard } from './components/console/LlmReadCard';
+
+describe('llmKind — build reads (B6)', () => {
+    test('llm+build classifies as build', () => {
+        expect(llmKind(rec({ tags: ['llm', 'build'] }))).toBe('build');
+    });
+    test('semantic kinds win over a stray build tag', () => {
+        expect(llmKind(rec({ tags: ['llm', 'closing', 'build'] }))).toBe('closing');
+        expect(llmKind(rec({ tags: ['death', 'llm', 'analysis', 'build'] }))).toBe('death-analysis');
+        expect(llmKind(rec({ tags: ['llm', 'checkin', 'build'] }))).toBe('checkin');
+    });
+    test('build beats the generic read register', () => {
+        expect(llmKind(rec({ tags: ['llm', 'read', 'build'] }))).toBe('build');
+    });
+    test('BUILD READ label mapped', () => {
+        expect(LLM_KIND_LABEL['build']).toBe('BUILD READ');
+    });
+    test('Zone06 build ITEM cards (no llm tag) are NOT llm reads', () => {
+        expect(llmKind(rec({ tags: ['build', 'intel'] }))).toBeNull();
+        expect(llmKind(rec({ tags: ['situational', 'intel', 'build'] }))).toBeNull();
+    });
+});
+
+describe('pickReadCard — build reads (B6)', () => {
+    test('a fresh build read renders as THE READ card', () => {
+        const build = rec({ title: 'Shard now', tags: ['llm', 'build'], receivedAt: 1_000_000 });
+        expect(pickReadCard([build], 1_010_000)).toBe(build);
+    });
+    test('stale build reads and ambient reads still do not take the card', () => {
+        const stale = rec({ tags: ['llm', 'build'], receivedAt: 1_000_000 });
+        expect(pickReadCard([stale], 1_070_000)).toBeNull();
+        const ambient = rec({ tags: ['llm', 'ambient'], receivedAt: 1_000_000 });
+        expect(pickReadCard([ambient], 1_010_000)).toBeNull();
+    });
+});
+
 describe('verdictBadge', () => {
     test('TRADE is radiant — a won trade is never rendered as danger', () => {
         expect(verdictBadge('TRADE')).toEqual({ label: 'TRADE WON', tone: 'radiant' });
