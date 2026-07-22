@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&amp;family=Inter:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;family=Share+Tech+Mono&amp;display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;height:100%;background:#050608;overflow:hidden}
+a{color:#5AA9FF}a:hover{color:#8fc5ff}
+@keyframes ping-d{0%{box-shadow:0 0 0 0 rgba(255,89,100,.5)}70%,100%{box-shadow:0 0 0 12px rgba(0,0,0,0)}}
+@keyframes ping-a{0%{box-shadow:0 0 0 0 rgba(255,176,0,.5)}70%,100%{box-shadow:0 0 0 12px rgba(0,0,0,0)}}
+@keyframes breathe{0%,100%{opacity:.5}50%{opacity:1}}
+@media (prefers-reduced-motion:reduce){*{animation:none !important}}
+</style>
+</helmet>
+
+<div style="position:fixed;inset:0;background:#050608;display:flex;align-items:center;justify-content:center;padding-bottom:74px;box-sizing:border-box;font-family:Inter,system-ui,sans-serif">
+  <div style="width:1920px;height:1080px;flex:none;transform:scale({{stageScale}});transform-origin:center center">
+
+    <!-- ══════════ A · CONSOLE — instrument telemetry, hairline grid ══════════ -->
+    <sc-if value="{{ dirA }}" hint-placeholder-val="{{ true }}">
+      <div style="width:1920px;height:1080px;overflow:hidden;background:#0B0C0E;color:#C9D1DA;font-family:'IBM Plex Mono',ui-monospace,monospace;display:grid;grid-template-rows:64px minmax(0,1fr) 150px">
+
+        <!-- header -->
+        <div style="display:grid;grid-template-columns:620px minmax(0,1fr);border-bottom:1px solid #21252B">
+          <div style="display:flex;align-items:center;gap:24px;padding:0 32px;border-right:1px solid #21252B">
+            <span style="font-family:'Chakra Petch',sans-serif;font-size:18px;font-weight:700;letter-spacing:.3em;color:#FFB000">RAIJIN</span>
+            <span style="font-size:11px;letter-spacing:.18em;color:#4A525E">CONSOLE · 7.41d</span>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:0 32px;font-size:12px;letter-spacing:.14em;font-variant-numeric:tabular-nums">
+            <span style="color:#4A525E">T+<span style="color:#C9D1DA;font-size:16px">22:54</span></span>
+            <span style="color:#4A525E">AXE · POS 3 · LV <span style="color:#C9D1DA">14</span></span>
+            <span style="color:#4A525E">SCORE <span style="color:#3BE0A0">16</span>–<span style="color:#FF5964">19</span></span>
+            <span style="color:#4A525E">GSI <span style="color:#3BE0A0">●</span> 0.5s &nbsp; LLM <span style="color:#FFB000">●</span> ~9s &nbsp; INTEL <span style="color:#FF5964">●</span> ~2m</span>
+          </div>
+        </div>
+
+        <!-- body grid -->
+        <div style="display:grid;grid-template-columns:620px minmax(0,1fr);min-height:0">
+          <!-- left: directive + stance + log -->
+          <div style="border-right:1px solid #21252B;display:grid;grid-template-rows:auto auto minmax(0,1fr)">
+            <div style="padding:30px 32px 26px;border-bottom:1px solid #21252B">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <span style="font-size:11px;letter-spacing:.26em;color:#4A525E">01 · DIRECTIVE</span>
+                <span style="display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.2em;color:#FFB000"><span style="width:7px;height:7px;background:#FFB000;animation:ping-a 1.8s ease-out infinite"></span>LIVE</span>
+              </div>
+              <div style="font-family:'Chakra Petch',sans-serif;font-size:52px;line-height:1.02;font-weight:700;margin:16px 0 12px;color:#EDF1F6;letter-spacing:.005em">FARM TOP UNTIL<br><span style="color:#FFB000">BLADE MAIL</span></div>
+              <p style="margin:0;font-size:16px;line-height:1.55;color:#7E8896;font-family:Inter,sans-serif;max-width:52ch">You can't contest Rosh at −4 levels. 715g to go — two waves and the ancient stack. Then their dive pattern feeds you instead of them.</p>
+              <div style="margin-top:18px">
+                <div style="display:flex;justify-content:space-between;font-size:11px;letter-spacing:.16em;color:#4A525E;margin-bottom:7px"><span>1385 / 2100 G</span><span style="color:#C9D1DA">−715 · ≈1:53</span></div>
+                <div style="height:2px;background:#21252B;position:relative"><div style="position:absolute;left:0;top:0;bottom:0;width:66%;background:#FFB000"></div><div style="position:absolute;left:66%;top:-3px;width:1px;height:8px;background:#FFB000"></div></div>
+              </div>
+            </div>
+            <div style="padding:22px 32px;border-bottom:1px solid #21252B">
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <span style="font-size:11px;letter-spacing:.26em;color:#4A525E">02 · STANCE</span>
+                <span style="font-size:11px;letter-spacing:.14em;color:#4A525E">CONF <span style="color:#C9D1DA">82</span> · DISCIPLINE HOLD</span>
+              </div>
+              <div style="display:flex;align-items:baseline;gap:28px;margin-top:12px">
+                <span style="font-family:'Chakra Petch',sans-serif;font-size:40px;font-weight:700;color:#4FA3FF;letter-spacing:.04em">FARM</span>
+                <span style="font-family:'Chakra Petch',sans-serif;font-size:19px;font-weight:600;color:#2A3038;letter-spacing:.06em">FIGHT</span>
+                <span style="font-family:'Chakra Petch',sans-serif;font-size:19px;font-weight:600;color:#2A3038;letter-spacing:.06em">PUSH</span>
+                <span style="flex:1"></span>
+                <span style="font-size:12px;color:#7E8896;font-family:Inter,sans-serif">flips to FIGHT only if 4+ allies commit at the pit</span>
+              </div>
+            </div>
+            <div style="padding:22px 32px;min-height:0;overflow:hidden">
+              <div style="font-size:11px;letter-spacing:.26em;color:#4A525E;margin-bottom:14px">03 · LOG · WHY-FIRST</div>
+              <div style="display:grid;grid-template-columns:58px 14px 1fr;row-gap:0;font-variant-numeric:tabular-nums">
+                <span style="font-size:12px;color:#4A525E;padding:12px 0;border-top:1px solid #171A1F">22:09</span><span style="color:#FF5964;padding:12px 0;border-top:1px solid #171A1F">▮</span><div style="font-family:Inter,sans-serif;font-size:15.5px;line-height:1.5;color:#C9D1DA;padding:12px 0;border-top:1px solid #171A1F"><b>No buyback.</b> <span style="color:#7E8896">It costs everything you have; dying without it in the Rosh window loses the game.</span></div>
+                <span style="font-size:12px;color:#4A525E;padding:12px 0;border-top:1px solid #171A1F">21:48</span><span style="color:#FFB000;padding:12px 0;border-top:1px solid #171A1F">▮</span><div style="font-family:Inter,sans-serif;font-size:15.5px;line-height:1.5;color:#C9D1DA;padding:12px 0;border-top:1px solid #171A1F"><b>Blade Mail over Blink.</b> <span style="color:#7E8896">AM manta-dodges the call but not the reflect.</span></div>
+                <span style="font-size:12px;color:#4A525E;padding:12px 0;border-top:1px solid #171A1F">21:30</span><span style="color:#5AA9FF;padding:12px 0;border-top:1px solid #171A1F">▮</span><div style="font-family:Inter,sans-serif;font-size:15.5px;line-height:1.5;color:#C9D1DA;padding:12px 0;border-top:1px solid #171A1F"><b>Ward the pit before 23:45.</b> <span style="color:#7E8896">Aegis on AM ends it; vision is the only counter you can buy.</span></div>
+                <span style="font-size:12px;color:#4A525E;padding:12px 0;border-top:1px solid #171A1F">20:55</span><span style="color:#4A525E;padding:12px 0;border-top:1px solid #171A1F">▮</span><div style="font-family:Inter,sans-serif;font-size:15.5px;line-height:1.5;color:#7E8896;padding:12px 0;border-top:1px solid #171A1F">CS pace 4.0/min vs 5.6 bracket median — the gap is a farm gap.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- right: the gap -->
+          <div style="display:grid;grid-template-rows:auto minmax(0,1fr);min-height:0">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;padding:30px 36px 0">
+              <span style="font-size:11px;letter-spacing:.26em;color:#4A525E">04 · THE GAP — NET WORTH BY MINUTE</span>
+              <span style="display:flex;gap:20px;font-size:11px;letter-spacing:.12em"><span style="color:#FFB000">━ YOU</span><span style="color:#FF5964">━ ANTI-MAGE</span><span style="color:#3A414B">╌ CRUSADER P3 MEDIAN</span></span>
+            </div>
+            <div style="position:relative;margin:18px 36px 26px;min-height:0">
+              <svg viewBox="0 0 1180 560" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%">
+                <g stroke="#171A1F" stroke-width="1">
+                  <line x1="0" y1="93" x2="1180" y2="93"></line><line x1="0" y1="186" x2="1180" y2="186"></line><line x1="0" y1="279" x2="1180" y2="279"></line><line x1="0" y1="372" x2="1180" y2="372"></line><line x1="0" y1="465" x2="1180" y2="465"></line>
+                  <line x1="236" y1="0" x2="236" y2="560"></line><line x1="472" y1="0" x2="472" y2="560"></line><line x1="708" y1="0" x2="708" y2="560"></line><line x1="944" y1="0" x2="944" y2="560"></line>
+                </g>
+                <path d="M0,548 L118,528 L236,505 L354,486 L472,452 L590,428 L708,388 L826,355 L944,318 L1062,282 L1180,248" stroke="#3A414B" stroke-width="2" stroke-dasharray="7 6" fill="none"></path>
+                <path d="M0,550 L118,524 L236,492 L354,451 L472,400 L590,342 L708,282 L826,219 L944,161 L1062,103 L1180,47" stroke="#FF5964" stroke-width="2.5" fill="none"></path>
+                <path d="M0,550 L118,533 L236,513 L354,502 L472,472 L590,459 L708,444 L826,438 L944,410 L1062,395 L1180,378" stroke="#FFB000" stroke-width="2.5" fill="none"></path>
+                <circle cx="1180" cy="378" r="5" fill="#FFB000"></circle>
+                <circle cx="1180" cy="47" r="5" fill="#FF5964"></circle>
+                <g fill="#FF5964"><path d="M354,516 l7,-12 h-14 z"></path><path d="M590,473 l7,-12 h-14 z"></path><path d="M708,458 l7,-12 h-14 z"></path><path d="M826,452 l7,-12 h-14 z"></path><path d="M944,424 l7,-12 h-14 z"></path><path d="M1120,409 l7,-12 h-14 z"></path></g>
+              </svg>
+              <div style="position:absolute;left:0;right:0;bottom:-4px;display:flex;justify-content:space-between;font-size:10px;letter-spacing:.16em;color:#2A3038;font-variant-numeric:tabular-nums"><span>02</span><span>06</span><span>10</span><span>14</span><span>18</span><span>MIN 22</span></div>
+              <div style="position:absolute;right:8px;top:2px;text-align:right"><div style="font-family:'Chakra Petch',sans-serif;font-size:38px;font-weight:700;color:#FF5964;font-variant-numeric:tabular-nums">−8.5k</div><div style="font-size:10px;letter-spacing:.2em;color:#4A525E">GAP · GROWING 410/MIN</div></div>
+              <div style="position:absolute;left:24%;bottom:14%;max-width:320px;border-left:2px solid #FF5964;padding:2px 0 2px 14px"><div style="font-size:10px;letter-spacing:.22em;color:#FF5964">▲ = YOUR DEATHS</div><div style="font-family:Inter,sans-serif;font-size:14.5px;line-height:1.5;color:#C9D1DA;margin-top:5px">Every flat segment of your curve starts at a death. Alive, your slope matches the median — <b>the gap is death time, not farm skill.</b></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- tape -->
+        <div style="border-top:1px solid #21252B;padding:18px 36px 0;background:#08090B">
+          <div style="display:flex;justify-content:space-between;font-size:11px;letter-spacing:.26em;color:#4A525E"><span>05 · TAPE — NEXT 180 SECONDS</span><span>NOW T+22:54</span></div>
+          <div style="position:relative;height:76px;margin-top:12px">
+            <div style="position:absolute;left:0;right:0;top:34px;height:1px;background:#21252B"></div>
+            <div style="position:absolute;left:0;right:0;top:28px;height:13px;background:repeating-linear-gradient(90deg,#21252B 0 1px,transparent 1px 30.6px)"></div>
+            <div style="position:absolute;left:0;top:22px;width:2px;height:25px;background:#FFB000"></div>
+            <div style="position:absolute;left:0;top:54px;font-size:10px;letter-spacing:.18em;color:#FFB000">NOW</div>
+            <div style="position:absolute;left:3.3%;top:26px;width:1px;height:17px;background:#5AA9FF"></div>
+            <div style="position:absolute;left:3.3%;top:6px;font-size:11px;letter-spacing:.12em;color:#5AA9FF">STACK :06</div>
+            <div style="position:absolute;left:28.3%;top:26px;width:1px;height:17px;background:#F5C518"></div>
+            <div style="position:absolute;left:28.3%;top:6px;font-size:11px;letter-spacing:.12em;color:#F5C518">ROSH WINDOW 0:51</div>
+            <div style="position:absolute;left:36.6%;top:26px;width:1px;height:17px;background:#5AA9FF"></div>
+            <div style="position:absolute;left:36.6%;top:54px;font-size:11px;letter-spacing:.12em;color:#5AA9FF">RUNE 1:06</div>
+            <div style="position:absolute;left:63%;top:26px;width:1px;height:17px;background:#FFB000"></div>
+            <div style="position:absolute;left:63%;top:6px;font-size:11px;letter-spacing:.12em;color:#FFB000">BLADE MAIL ≈1:53</div>
+            <div style="position:absolute;left:28.3%;right:8%;top:34px;height:1px;background:linear-gradient(90deg,#F5C51888,transparent)"></div>
+            <div style="position:absolute;right:8%;top:26px;width:1px;height:17px;background:#FF5964"></div>
+            <div style="position:absolute;right:8%;top:6px;font-size:11px;letter-spacing:.12em;color:#FF5964">AEGIS RISK PEAK ≈2:45</div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+
+    <!-- ══════════ B · CUT — editorial broadcast, one focus ══════════ -->
+    <sc-if value="{{ dirB }}" hint-placeholder-val="{{ false }}">
+      <div style="width:1920px;height:1080px;overflow:hidden;background:#07080A;color:#E6EAF0;display:grid;grid-template-rows:72px minmax(0,1fr) 96px;box-shadow:inset 0 0 0 1px #1A1E24">
+
+        <!-- score strip -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:0 48px;border-bottom:1px solid #1A1E24">
+          <div style="display:flex;align-items:center;gap:14px">
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.26em;color:#3BE0A0">RADIANT</span>
+            <div style="display:flex;gap:4px">
+              <img src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/axe.png" alt="Axe" style="width:44px;height:25px;display:block">
+              <img src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/medusa.png" alt="Medusa" style="width:44px;height:25px;display:block;opacity:.55">
+              <img src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/puck.png" alt="Puck" style="width:44px;height:25px;display:block;opacity:.55">
+              <img src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/windrunner.png" alt="WR" style="width:44px;height:25px;display:block;opacity:.55">
+              <img src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/lion.png" alt="Lion" style="width:44px;height:25px;display:block;opacity:.55">
+            </div>
+          </div>
+          <div style="display:flex;align-items:baseline;gap:18px">
+            <span style="font-family:'Chakra Petch',sans-serif;font-size:34px;font-weight:700;font-variant-numeric:tabular-nums;color:#3BE0A0">16</span>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:#4A525E;letter-spacing:.2em;font-variant-numeric:tabular-nums">23:45</span>
+            <span style="font-family:'Chakra Petch',sans-serif;font-size:34px;font-weight:700;font-variant-numeric:tabular-nums;color:#FF5964">19</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px">
+            <div style="display:flex;gap:4px">
+              <img src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/antimage.png" alt="AM" style="width:44px;height:25px;display:block">
+              <img src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/storm_spirit.png" alt="Storm" style="width:44px;height:25px;display:block;opacity:.55">
+              <img src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/tidehunter.png" alt="Tide" style="width:44px;height:25px;display:block;opacity:.55">
+              <img src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/rubick.png" alt="Rubick" style="width:44px;height:25px;display:block;opacity:.55">
+              <img src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/witch_doctor.png" alt="WD" style="width:44px;height:25px;display:block;opacity:.55">
+            </div>
+            <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.26em;color:#FF5964">DIRE</span>
+          </div>
+        </div>
+
+        <!-- the cut -->
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) 460px;min-height:0">
+          <div style="display:flex;flex-direction:column;justify-content:center;padding:0 72px;position:relative;border-right:1px solid #1A1E24">
+            <div style="position:absolute;top:0;left:72px;right:72px;height:3px;background:#FF5964"></div>
+            <div style="display:flex;align-items:center;gap:14px;font-family:'IBM Plex Mono',monospace;font-size:13px;letter-spacing:.3em;color:#FF5964">
+              <span style="width:9px;height:9px;background:#FF5964;animation:ping-d 1.6s ease-out infinite"></span>
+              CRITICAL — ROSHAN WINDOW OPEN
+            </div>
+            <div style="font-family:'Chakra Petch',sans-serif;font-size:112px;line-height:.98;font-weight:700;margin:26px 0 22px;letter-spacing:-.015em">DO NOT TP TO<br>THE PIT <span style="color:#FF5964">ALONE</span></div>
+            <p style="margin:0;font-size:23px;line-height:1.5;color:#8A94A6;max-width:50ch;font-weight:400">Four of them are missing and the pit is unwarded. Joining now is a fifth solo death, not a contest — shadow the ancient stack and TP only when <span style="color:#E6EAF0;font-weight:600">three allies commit.</span></p>
+            <div style="display:flex;gap:0;margin-top:34px;font-family:'IBM Plex Mono',monospace;font-size:13px;letter-spacing:.12em">
+              <span style="color:#FF5964;padding-right:22px;border-right:1px solid #1A1E24">4 MISSING 0:22</span>
+              <span style="color:#8A94A6;padding:0 22px;border-right:1px solid #1A1E24">PIT UNWARDED</span>
+              <span style="color:#8A94A6;padding:0 22px;border-right:1px solid #1A1E24;font-variant-numeric:tabular-nums">AEGIS DECIDES ≈3:00</span>
+              <span style="color:#4A525E;padding-left:22px">RULES &lt;50ms · AS OF 23:45</span>
+            </div>
+          </div>
+
+          <!-- rundown -->
+          <div style="padding:40px 44px;display:flex;flex-direction:column;min-height:0">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.3em;color:#4A525E;margin-bottom:8px">RUNDOWN</div>
+            <div style="display:flex;flex-direction:column;font-variant-numeric:tabular-nums">
+              <div style="display:grid;grid-template-columns:70px 1fr;gap:14px;align-items:baseline;padding:15px 0;border-bottom:1px solid #14171C">
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#4FA3FF">NOW</span>
+                <div><div style="font-size:17px;font-weight:600">FARM · discipline hold</div><div style="font-size:13px;color:#5C6675;margin-top:2px">confidence 82 · resist the river</div></div>
+              </div>
+              <div style="display:grid;grid-template-columns:70px 1fr;gap:14px;align-items:baseline;padding:15px 0;border-bottom:1px solid #14171C">
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#F5C518">+0:44</span>
+                <div><div style="font-size:17px;font-weight:600">Blade Mail completes</div><div style="font-size:13px;color:#5C6675;margin-top:2px">at current gpm · flips their dive</div></div>
+              </div>
+              <div style="display:grid;grid-template-columns:70px 1fr;gap:14px;align-items:baseline;padding:15px 0;border-bottom:1px solid #14171C">
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#5AA9FF">+1:15</span>
+                <div><div style="font-size:17px;font-weight:600">Power rune</div><div style="font-size:13px;color:#5C6675;margin-top:2px">Puck wants haste mid</div></div>
+              </div>
+              <div style="display:grid;grid-template-columns:70px 1fr;gap:14px;align-items:baseline;padding:15px 0;border-bottom:1px solid #14171C">
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#4A525E">22:09</span>
+                <div style="color:#8A94A6"><div style="font-size:16px;font-weight:500">Death №7 read — river cross, no vision, no TP</div></div>
+              </div>
+              <div style="display:grid;grid-template-columns:70px 1fr;gap:14px;align-items:baseline;padding:15px 0;border-bottom:1px solid #14171C">
+                <span style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#4A525E">20:55</span>
+                <div style="color:#8A94A6"><div style="font-size:16px;font-weight:500">CS pace 4.0/min vs 5.6 median</div></div>
+              </div>
+            </div>
+            <div style="margin-top:auto">
+              <div style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.24em;color:#4A525E;margin-bottom:10px">LAST KNOWN · INTEL ~2m</div>
+              <div style="display:flex;gap:5px">
+                <div style="position:relative"><img src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/antimage.png" alt="AM" style="width:46px;height:26px;display:block"><span style="position:absolute;inset:0;box-shadow:inset 0 0 0 1px #FF5964"></span></div>
+                <img src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/storm_spirit.png" alt="Storm" style="width:46px;height:26px;display:block;opacity:.35">
+                <img src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/tidehunter.png" alt="Tide" style="width:46px;height:26px;display:block;opacity:.35">
+                <img src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/rubick.png" alt="Rubick" style="width:46px;height:26px;display:block;opacity:.35">
+                <img src="https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/witch_doctor.png" alt="WD" style="width:46px;height:26px;display:block"></div>
+              <div style="font-size:13px;color:#5C6675;margin-top:8px;font-family:Inter,sans-serif">Dimmed = missing &gt;20s · only WD shown on map</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- voice bar -->
+        <div style="display:flex;align-items:center;gap:18px;padding:0 72px;border-top:1px solid #1A1E24;background:#060708">
+          <span style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.26em;color:#4A525E">VOICE</span>
+          <div style="display:flex;align-items:center;gap:3px;height:24px">
+            <span style="width:3px;height:9px;background:#F5C518;animation:breathe 1s ease-in-out infinite"></span><span style="width:3px;height:17px;background:#F5C518;animation:breathe 1s ease-in-out .1s infinite"></span><span style="width:3px;height:24px;background:#F5C518;animation:breathe 1s ease-in-out .2s infinite"></span><span style="width:3px;height:13px;background:#F5C518;animation:breathe 1s ease-in-out .3s infinite"></span><span style="width:3px;height:19px;background:#F5C518;animation:breathe 1s ease-in-out .4s infinite"></span>
+          </div>
+          <span style="font-size:16px;color:#8A94A6;font-style:italic">“Don't TP to the pit alone — four missing, no vision. Farm until three allies commit.”</span>
+          <span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.18em;color:#4A525E">SCREEN HOLDS WHILE VOICE SPEAKS · CARD FOLLOWS 440Hz PING</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ══════════ C · PHOSPHOR — monochrome terminal dossier, death beat ══════════ -->
+    <sc-if value="{{ dirC }}" hint-placeholder-val="{{ false }}">
+      <div style="width:1920px;height:1080px;overflow:hidden;background:#0A0906;color:#D9B96A;font-family:'IBM Plex Mono',ui-monospace,monospace;position:relative">
+        <!-- registration frame -->
+        <div style="position:absolute;inset:26px;border:1px solid #2E2612;pointer-events:none"></div>
+        <div style="position:absolute;left:20px;top:20px;width:14px;height:14px;border-left:1px solid #FFB000;border-top:1px solid #FFB000"></div>
+        <div style="position:absolute;right:20px;top:20px;width:14px;height:14px;border-right:1px solid #FFB000;border-top:1px solid #FFB000"></div>
+        <div style="position:absolute;left:20px;bottom:20px;width:14px;height:14px;border-left:1px solid #FFB000;border-bottom:1px solid #FFB000"></div>
+        <div style="position:absolute;right:20px;bottom:20px;width:14px;height:14px;border-right:1px solid #FFB000;border-bottom:1px solid #FFB000"></div>
+
+        <div style="position:absolute;inset:26px;display:grid;grid-template-rows:60px minmax(0,1fr);overflow:hidden">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:0 36px;border-bottom:1px solid #2E2612;font-size:12px;letter-spacing:.2em;font-variant-numeric:tabular-nums">
+            <span style="color:#FFB000;font-weight:600">RAIJIN <span style="color:#6B5A20">// DEATH RECORD №7</span></span>
+            <span style="color:#6B5A20">T+22:14 · AXE · P3 · MATCH 8 237 114 502</span>
+            <span style="color:#6B5A20">SONNET ANALYSIS <span style="color:#FFB000">RECEIVED 22:18</span></span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:560px minmax(0,1fr);min-height:0">
+            <!-- numerals column -->
+            <div style="border-right:1px solid #2E2612;padding:44px 40px;display:flex;flex-direction:column">
+              <div style="font-size:11px;letter-spacing:.3em;color:#6B5A20">RESPAWN</div>
+              <div style="font-family:'Share Tech Mono',monospace;font-size:210px;line-height:.9;color:#FFB000;font-variant-numeric:tabular-nums;text-shadow:0 0 34px rgba(255,176,0,.25);margin:10px 0 0 -8px">19</div>
+              <div style="font-size:11px;letter-spacing:.3em;color:#6B5A20;margin-top:4px">SECONDS</div>
+              <div style="margin-top:44px;display:grid;grid-template-columns:1fr 1fr;gap:0;border-top:1px solid #2E2612">
+                <div style="padding:18px 0;border-right:1px solid #2E2612">
+                  <div style="font-size:11px;letter-spacing:.24em;color:#6B5A20">SPEND NOW</div>
+                  <div style="font-family:'Share Tech Mono',monospace;font-size:44px;color:#FFD54F;font-variant-numeric:tabular-nums;margin-top:6px">1385g</div>
+                </div>
+                <div style="padding:18px 0 18px 24px">
+                  <div style="font-size:11px;letter-spacing:.24em;color:#6B5A20">BUY</div>
+                  <div style="font-size:17px;color:#EFE3C0;margin-top:10px;line-height:1.4">CHAINMAIL 550<br><span style="color:#6B5A20">BANK THE REST</span></div>
+                </div>
+              </div>
+              <div style="margin-top:auto">
+                <div style="font-size:11px;letter-spacing:.3em;color:#6B5A20;margin-bottom:12px">DEATH LEDGER · 7 ENTRIES</div>
+                <div style="display:flex;gap:6px;align-items:flex-end;height:56px">
+                  <div style="width:34px;height:30%;background:#2E2612"></div>
+                  <div style="width:34px;height:44%;background:#2E2612"></div>
+                  <div style="width:34px;height:38%;background:#5C4510"></div>
+                  <div style="width:34px;height:60%;background:#5C4510"></div>
+                  <div style="width:34px;height:52%;background:#5C4510"></div>
+                  <div style="width:34px;height:78%;background:#B8860B"></div>
+                  <div style="width:34px;height:100%;background:#FFB000"></div>
+                </div>
+                <div style="font-size:11px;color:#6B5A20;margin-top:8px;letter-spacing:.14em">TIME DEAD PER DEATH → THIS ONE COSTS 38s + WALK</div>
+              </div>
+            </div>
+
+            <!-- the read -->
+            <div style="padding:44px 48px;display:flex;flex-direction:column;min-height:0">
+              <div style="font-size:11px;letter-spacing:.3em;color:#6B5A20">THE READ — WHAT TO CHANGE</div>
+              <div style="font-family:'Chakra Petch',sans-serif;font-size:44px;line-height:1.12;font-weight:600;color:#EFE3C0;margin:18px 0 0;max-width:22ch">You died to a river you couldn't see, not to Storm Spirit.</div>
+              <p style="margin:22px 0 0;font-size:19px;line-height:1.65;color:#D9B96A;font-family:Inter,sans-serif;max-width:58ch">Crossing at 21:50: no ward on either rune, no TP scroll, no ally within 4 seconds. At −4 levels that river is their map. Until Blade Mail completes, your world is the top quadrant — wave, hard camp, stack, repeat. <span style="color:#EFE3C0;font-weight:600">Cross water only behind vision or behind four allies.</span></p>
+              <div style="margin-top:34px;border-top:1px solid #2E2612;padding-top:18px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:0">
+                <div style="border-right:1px solid #2E2612;padding-right:26px">
+                  <div style="font-size:11px;letter-spacing:.24em;color:#6B5A20">PATTERN</div>
+                  <div style="font-size:15px;color:#EFE3C0;margin-top:8px;line-height:1.5;font-family:Inter,sans-serif">3 of 7 deaths began at an unwarded river cross</div>
+                </div>
+                <div style="border-right:1px solid #2E2612;padding:0 26px">
+                  <div style="font-size:11px;letter-spacing:.24em;color:#6B5A20">COST</div>
+                  <div style="font-size:15px;color:#EFE3C0;margin-top:8px;line-height:1.5;font-family:Inter,sans-serif">6:40 dead of 22:14 — 29% of the game</div>
+                </div>
+                <div style="padding-left:26px">
+                  <div style="font-size:11px;letter-spacing:.24em;color:#6B5A20">NEXT TEST</div>
+                  <div style="font-size:15px;color:#EFE3C0;margin-top:8px;line-height:1.5;font-family:Inter,sans-serif">Zero river deaths before Blade Mail → gap stops growing</div>
+                </div>
+              </div>
+              <div style="margin-top:auto;display:flex;justify-content:space-between;align-items:baseline;border-top:1px solid #2E2612;padding-top:16px">
+                <span style="font-size:12px;letter-spacing:.18em;color:#6B5A20">ON RESPAWN → <span style="color:#FFB000">FARM · DISCIPLINE 82</span> · TOP QUADRANT</span>
+                <span style="font-size:12px;letter-spacing:.18em;color:#6B5A20;font-variant-numeric:tabular-nums">ROSH WINDOW 1:31 · STAY NORTH</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+
+  <!-- switcher -->
+  <div style="position:fixed;left:50%;bottom:18px;transform:translateX(-50%);display:flex;align-items:center;gap:0;background:#0B0C0E;border:1px solid #21252B;font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.16em">
+    <button onClick="{{ pickA }}" style="background:transparent;border:none;border-right:1px solid #21252B;color:{{ tabA }};padding:10px 22px;font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.16em;cursor:pointer">A · CONSOLE</button>
+    <button onClick="{{ pickB }}" style="background:transparent;border:none;border-right:1px solid #21252B;color:{{ tabB }};padding:10px 22px;font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.16em;cursor:pointer">B · CUT</button>
+    <button onClick="{{ pickC }}" style="background:transparent;border:none;border-right:1px solid #21252B;color:{{ tabC }};padding:10px 22px;font-family:'IBM Plex Mono',monospace;font-size:12px;letter-spacing:.16em;cursor:pointer">C · PHOSPHOR</button>
+    <span style="color:#2A3038;padding:0 16px">←/→</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { dir: 'a', scale: 0.45 };
+
+  componentDidMount() {
+    this._fit = () => {
+      const w = window.innerWidth, h = window.innerHeight;
+      const s = Math.min((w - 32) / 1920, (h - 110) / 1080);
+      this.setState({ scale: Math.min(s, 1) });
+    };
+    this._fit();
+    window.addEventListener('resize', this._fit);
+    this._keys = (e) => {
+      const order = ['a', 'b', 'c'];
+      const i = order.indexOf(this.state.dir);
+      if (e.key === 'ArrowRight') this.setState({ dir: order[(i + 1) % 3] });
+      if (e.key === 'ArrowLeft') this.setState({ dir: order[(i + 2) % 3] });
+    };
+    window.addEventListener('keydown', this._keys);
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener('resize', this._fit);
+    window.removeEventListener('keydown', this._keys);
+  }
+
+  renderVals() {
+    const d = this.state.dir;
+    return {
+      stageScale: this.state.scale,
+      dirA: d === 'a', dirB: d === 'b', dirC: d === 'c',
+      pickA: () => this.setState({ dir: 'a' }),
+      pickB: () => this.setState({ dir: 'b' }),
+      pickC: () => this.setState({ dir: 'c' }),
+      tabA: d === 'a' ? '#FFB000' : '#4A525E',
+      tabB: d === 'b' ? '#FF5964' : '#4A525E',
+      tabC: d === 'c' ? '#FFB000' : '#4A525E',
+    };
+  }
+}
+</script>
+</body>
+</html>

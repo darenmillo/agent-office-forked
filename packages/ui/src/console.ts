@@ -1,0 +1,608 @@
+/** CONSOLE board logic — pure, testable functions behind the zone components.
+ *
+ * Data honesty is the law here: nothing in this module invents a reading.
+ * Gold targets are parsed out of real rec text (null when absent), the gap
+ * series only accumulates values that arrived over the wire, and tape events
+ * are derived from the same TimerRailData the old rail rendered.
+ */
+import {
+    DeathVerdict, EnemyPlayerData, ItemRecMeta, RecUrgency, Recommendation,
+    TimerRailData, effectiveUrgency,
+} from './raijinTypes';
+import { ageWindow } from './pacing';
+
+export const TAPE_HORIZON_S = 180;
+/** Events further out than this are hidden until they enter the horizon. */
+export const TAPE_VISIBLE_MAX_S = 175;
+/** Labels past this % of the tape right-anchor so they never clip. */
+export const TAPE_RIGHT_ANCHOR_PCT = 82;
+
+/** Position on the tape as a 0–100 percentage of the 180s horizon. */
+export function tapePct(secondsUntil: number): number {
+    return Math.max(0, Math.min(100, (secondsUntil / TAPE_HORIZON_S) * 100));
+}
+
+/** Right-anchor labels near the tape's right edge (README §08). */
+export function tapeRightAnchor(secondsUntil: number): boolean {
+    return tapePct(secondsUntil) > TAPE_RIGHT_ANCHOR_PCT;
+}
+
+/** An event renders only while inside the visible horizon. */
+export function tapeEventVisible(secondsUntil: number): boolean {
+    return secondsUntil > 0 && secondsUntil <= TAPE_VISIBLE_MAX_S;
+}
+
+/** m:ss with clamping — the console never shows negative countdowns. */
+export function fmtMSS(sec: number): string {
+    const s = Math.max(0, Math.round(sec));
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+/** Extrapolate the live game clock from the last absolute snapshot. */
+export function extrapolatedClock(
+    snapshotClock: number,
+    receivedAtMs: number,
+    nowMs: number,
+): number {
+    return snapshotClock + Math.floor((nowMs - receivedAtMs) / 1000);
+}
+
+// ── Gold-target tracking (Zone 01 progress + tape item ETA) ────────────
+
+export interface GoldTarget {
+    /** Item/directive label straight from the rec title. */
+    label: string;
+    /** Gold cost from the rec's meta (preferred) or its own text — never hardcoded. */
+    cost: number;
+    /** category|title key of the source rec. */
+    recKey: string;
+    /** CDN item slug when the engine supplied structured meta. */
+    slug?: string;
+}
+
+const COST_RE = /(\d{3,5})\s*(?:g|gold)\b/i;
+
+/** Track the top fresh ITEM rec. Wave 2: the engine's structured `meta.cost`
+ *  is authoritative when present (also yields the CDN slug); the regex over
+ *  the rec's own text remains as the fallback for meta-less engines. A gold
+ *  target still only exists when the rec itself stated a cost — no invented
+ *  prices, ever. */
+export function extractGoldTarget(
+    recs: Recommendation[],
+    nowMs: number,
+): GoldTarget | null {
+    const items = recs
+        .filter(r => r.category === 'ITEM')
+        .filter(r => nowMs - (r.receivedAt ?? nowMs) < ageWindow(r))
+        .sort((a, b) => b.priority - a.priority || (b.receivedAt ?? 0) - (a.receivedAt ?? 0));
+    for (const rec of items) {
+        const metaCost = typeof rec.meta?.cost === 'number' ? rec.meta.cost : null;
+        if (metaCost !== null && metaCost >= 100) {
+            return {
+                label: rec.title,
+                cost: metaCost,
+                recKey: `${rec.category}|${rec.title}`,
+                slug: typeof rec.meta?.item === 'string' ? rec.meta.item : undefined,
+            };
+        }
+        const text = `${rec.title} ${rec.reason ?? ''} ${rec.body}`;
+        const m = COST_RE.exec(text);
+        if (m) {
+            const cost = parseInt(m[1], 10);
+            if (cost >= 100) {
+                return { label: rec.title, cost, recKey: `${rec.category}|${rec.title}` };
+            }
+        }
+    }
+    return null;
+}
+
+/** rc-audit row 14: true when the Zone01 directive IS the gold-target item —
+ *  Zone01 keeps the progress bar; Zone06 swaps its identical echo for
+ *  AFTER + pivot preview instead of repeating the same numbers 300px apart. */
+export function directiveIsGoldTarget(
+    action: Recommendation | null,
+    goldTarget: GoldTarget | null,
+): boolean {
+    return !!action && !!goldTarget
+        && `${action.category}|${action.title}` === goldTarget.recKey;
+}
+
+/** Seconds until the target is affordable at the current income. Null when
+ *  already affordable or income is unknown/zero. */
+export function goldEtaSeconds(
+    target: GoldTarget,
+    gold: number,
+    gpm: number,
+): number | null {
+    if (gold >= target.cost) return 0;
+    if (!gpm || gpm <= 0) return null;
+    return ((target.cost - gold) / gpm) * 60;
+}
+
+// ── Zone 06 build slots (B5) ───────────────────────────────────────────
+
+export interface BuildSlots {
+    next: Recommendation | null;
+    after: Recommendation | null;
+    pivots: Recommendation[];
+}
+
+/** Slot-aware Zone 06 selection: engine-declared `meta.build_slot` claims win;
+ *  when nothing in the list is slotted, the legacy positional read applies
+ *  (index 0 / 1 / 2–3); mixed lists fill only the UNCLAIMED slots with
+ *  slotless recs in arrival order — a slotless rec never displaces a claimant. */
+export function selectBuildSlots(itemRecs: Recommendation[]): BuildSlots {
+    const slotted = itemRecs.filter(r => typeof r.meta?.build_slot === 'string');
+    if (!slotted.length) {
+        return {
+            next: itemRecs[0] ?? null,
+            after: itemRecs[1] ?? null,
+            pivots: itemRecs.slice(2, 4),
+        };
+    }
+    let next = slotted.find(r => r.meta?.build_slot === 'next') ?? null;
+    let after = slotted.find(r => r.meta?.build_slot === 'after') ?? null;
+    const pivots = slotted.filter(r => r.meta?.build_slot === 'pivot').slice(0, 2);
+    const slotless = itemRecs.filter(r => typeof r.meta?.build_slot !== 'string');
+    let i = 0;
+    if (!next && i < slotless.length) next = slotless[i++];
+    if (!after && i < slotless.length) after = slotless[i++];
+    while (pivots.length < 2 && i < slotless.length) pivots.push(slotless[i++]);
+    return { next, after, pivots };
+}
+
+// ── Gap series (Zone 04) ───────────────────────────────────────────────
+
+export interface GapPoint {
+    /** Game minute bucket. */
+    min: number;
+    /** Cumulative gold earned proxy (gpm × minutes) — labeled honestly. */
+    you: number | null;
+    /** Enemy net worth from GC intel (null until intel covers the minute). */
+    enemy: number | null;
+    /** True when the player died during this minute (deaths counter moved). */
+    death: boolean;
+}
+
+export function bucketMinute(clockTimeSeconds: number): number {
+    return Math.max(0, Math.floor(clockTimeSeconds / 60));
+}
+
+/** GSI exposes gold + gpm, not net worth. gpm × elapsed minutes is the honest
+ *  derivable curve — the chart labels it GOLD EARNED, not NET WORTH. */
+export function goldEarnedProxy(gpm: number, gameTimeSeconds: number): number {
+    if (!gpm || gpm <= 0 || gameTimeSeconds <= 0) return 0;
+    return Math.round(gpm * (gameTimeSeconds / 60));
+}
+
+/** Append/refresh a minute bucket. Values only ever come from live payloads;
+ *  within a minute the latest reading wins. Returns a new array only when
+ *  something changed (referential stability for React memos). */
+export function upsertGapPoint(
+    series: GapPoint[],
+    min: number,
+    patch: Partial<Pick<GapPoint, 'you' | 'enemy'>> & { death?: boolean },
+): GapPoint[] {
+    const idx = series.findIndex(p => p.min === min);
+    if (idx === -1) {
+        const point: GapPoint = {
+            min,
+            you: patch.you ?? null,
+            enemy: patch.enemy ?? null,
+            death: patch.death ?? false,
+        };
+        return [...series, point].sort((a, b) => a.min - b.min);
+    }
+    const cur = series[idx];
+    const next: GapPoint = {
+        ...cur,
+        you: patch.you ?? cur.you,
+        enemy: patch.enemy ?? cur.enemy,
+        death: cur.death || (patch.death ?? false),
+    };
+    if (next.you === cur.you && next.enemy === cur.enemy && next.death === cur.death) {
+        return series;
+    }
+    const copy = [...series];
+    copy[idx] = next;
+    return copy;
+}
+
+/** Latest gap (enemy − you) across buckets where both readings exist.
+ *  Mixed sources (NW vs gold-earned) — callers must caption it as approx. */
+export function latestGap(series: GapPoint[]): { min: number; gap: number } | null {
+    for (let i = series.length - 1; i >= 0; i--) {
+        const p = series[i];
+        if (p.you !== null && p.enemy !== null) return { min: p.min, gap: p.enemy - p.you };
+    }
+    return null;
+}
+
+/** Gap slope per minute over the last two dual-reading buckets. */
+export function gapSlopePerMin(series: GapPoint[]): number | null {
+    const dual = series.filter(p => p.you !== null && p.enemy !== null);
+    if (dual.length < 2) return null;
+    const a = dual[dual.length - 2];
+    const b = dual[dual.length - 1];
+    const dm = b.min - a.min;
+    if (dm <= 0) return null;
+    return ((b.enemy! - b.you!) - (a.enemy! - a.you!)) / dm;
+}
+
+// ── Tape events (Zone 08) ──────────────────────────────────────────────
+
+export type TapeTone = 'blue' | 'amber' | 'gold' | 'dire';
+
+export interface TapeEvent {
+    key: string;
+    label: string;
+    tone: TapeTone;
+    secondsUntil: number;
+}
+
+export interface RoshTapeState {
+    state: 'pending' | 'open';
+    secondsUntil: number; // 0 when open
+}
+
+/** Roshan on the tape: a pending window drifts in as a gold band; an open
+ *  window re-anchors at NOW in dire. Unknown/up states render nothing. */
+export function roshTapeState(
+    rail: TimerRailData | null,
+    clock: number,
+): RoshTapeState | null {
+    const r = rail?.roshan;
+    if (!r) return null;
+    if (r.status === 'window') return { state: 'open', secondsUntil: 0 };
+    if (r.status === 'dead' && r.early !== null && r.early !== undefined) {
+        const until = r.early - clock;
+        if (until <= 0) return { state: 'open', secondsUntil: 0 };
+        return { state: 'pending', secondsUntil: until };
+    }
+    return null;
+}
+
+/** Merge TimerRailData + the live item ETA into positioned tape events.
+ *  Roshan is handled separately (band rendering) via roshTapeState. */
+export function deriveTapeEvents(
+    rail: TimerRailData | null,
+    clock: number,
+    itemEta: { label: string; seconds: number } | null,
+): TapeEvent[] {
+    const events: TapeEvent[] = [];
+    if (rail) {
+        if (rail.next_stack !== undefined) {
+            events.push({ key: 'stack', label: 'STACK', tone: 'blue', secondsUntil: rail.next_stack - clock });
+        }
+        if (rail.next_power_rune !== undefined) {
+            events.push({ key: 'rune', label: 'RUNE', tone: 'blue', secondsUntil: rail.next_power_rune - clock });
+        }
+        if (rail.next_bounty !== undefined) {
+            events.push({ key: 'bounty', label: 'BOUNTY', tone: 'blue', secondsUntil: rail.next_bounty - clock });
+        }
+        if (rail.tormentor && rail.tormentor.status !== 'up' && rail.tormentor.at !== null && rail.tormentor.at !== undefined) {
+            events.push({ key: 'tormentor', label: 'TORMENTOR', tone: 'blue', secondsUntil: rail.tormentor.at - clock });
+        }
+        if (rail.aegis?.expires_at !== undefined) {
+            events.push({ key: 'aegis', label: 'AEGIS EXPIRES', tone: 'dire', secondsUntil: rail.aegis.expires_at - clock });
+        }
+        // A6.2: enemy spike bands — the "(62% buy it)" tail stays on the
+        // briefing surfaces; the tape gets HERO + ITEM only.
+        for (const band of rail.spike_bands ?? []) {
+            events.push({
+                key: `spike-${band.hero}-${band.item}`,
+                label: band.label.split(' ≈')[0].toUpperCase(),
+                tone: 'dire',
+                secondsUntil: band.eta_minute * 60 - clock,
+            });
+        }
+    }
+    if (itemEta && itemEta.seconds > 0) {
+        events.push({
+            key: 'item-eta',
+            label: `${itemEta.label.toUpperCase()} ≈${fmtMSS(itemEta.seconds)}`,
+            tone: 'amber',
+            secondsUntil: itemEta.seconds,
+        });
+    }
+    return events
+        .filter(e => tapeEventVisible(e.secondsUntil))
+        .sort((a, b) => a.secondsUntil - b.secondsUntil);
+}
+
+// ── Wave 2: LLM read kinds, death verdicts, winnability, CHECK-IN ──────
+
+export type LlmKind = 'ambient' | 'checkin' | 'closing' | 'death-analysis' | 'read' | 'build';
+
+/** Classify an LLM rec by its tags; null for rule-based recs. */
+export function llmKind(rec: Recommendation): LlmKind | null {
+    const tags = rec.tags ?? [];
+    if (!tags.includes('llm')) return null;
+    if (tags.includes('death') && tags.includes('analysis')) return 'death-analysis';
+    if (tags.includes('checkin')) return 'checkin';
+    if (tags.includes('closing')) return 'closing';
+    if (tags.includes('ambient')) return 'ambient';
+    // B6: semantic kinds above win over a stray build tag; build beats the
+    // generic read register (Zone06 build ITEM cards carry no 'llm' tag and
+    // never reach here).
+    if (tags.includes('build')) return 'build';
+    if (tags.includes('read')) return 'read';
+    // untyped legacy llm rec — render as a generic read, never unstyled
+    return 'read';
+}
+
+export const LLM_KIND_LABEL: Record<LlmKind, string> = {
+    ambient: 'AMBIENT READ',
+    checkin: 'CHECK-IN',
+    closing: 'CLOSING PLAN',
+    'death-analysis': 'DEATH READ',
+    read: 'RAIJIN READ',
+    build: 'BUILD READ',
+};
+
+// A-7: pulse-check strip — row register per event kind. Failures always
+// read as danger; llm rows wear the PHOSPHOR voice like every coach read.
+export type ActivityTone = 'dire' | 'phos' | 'chrome' | 'amber' | 'body';
+
+export function activityTone(kind: string, ok: boolean): ActivityTone {
+    if (!ok || kind === 'error') return 'dire';
+    if (kind === 'llm') return 'phos';
+    if (kind === 'bot' || kind === 'stratz') return 'chrome';
+    if (kind === 'engine') return 'amber';
+    return 'body';
+}
+
+export interface VerdictBadge {
+    label: string;
+    /** console_ token name — TRADE is a win, never dire. */
+    tone: 'radiant' | 'blue' | 'amber' | 'dire';
+}
+
+/** Trade-ledger verdict → badge. Unknown strings render nothing. */
+export function verdictBadge(verdict: string | undefined | null): VerdictBadge | null {
+    switch (verdict as DeathVerdict | undefined | null) {
+        case 'TRADE': return { label: 'TRADE WON', tone: 'radiant' };
+        case 'EVEN_TRADE': return { label: 'EVEN TRADE', tone: 'blue' };
+        case 'FIGHT_DEATH': return { label: 'FIGHT DEATH', tone: 'amber' };
+        case 'CAUGHT': return { label: 'CAUGHT', tone: 'dire' };
+        default: return null;
+    }
+}
+
+/** Winnability chip tone — informational, one alarm at a time (never pings). */
+export function winnabilityTone(pWin: number): 'dire' | 'amber' | 'radiant' {
+    if (pWin < 0.35) return 'dire';
+    if (pWin < 0.55) return 'amber';
+    return 'radiant';
+}
+
+export function fmtPct(p: number): string {
+    return `${Math.round(Math.max(0, Math.min(1, p)) * 100)}%`;
+}
+
+/** CHECK-IN request lifecycle. `queued` flips back to idle when the answer
+ *  rec lands or after the 90s give-up window — the button never wedges. */
+export interface CheckinState {
+    phase: 'idle' | 'queued';
+    queuedAt: number | null;
+}
+
+export const CHECKIN_TIMEOUT_MS = 90_000;
+
+export type CheckinEvent =
+    | { type: 'fire'; now: number }
+    | { type: 'landed' }
+    | { type: 'error' }
+    | { type: 'tick'; now: number };
+
+export function checkinNext(state: CheckinState, ev: CheckinEvent): CheckinState {
+    switch (ev.type) {
+        case 'fire':
+            return state.phase === 'queued' ? state : { phase: 'queued', queuedAt: ev.now };
+        case 'landed':
+        case 'error':
+            return state.phase === 'idle' ? state : { phase: 'idle', queuedAt: null };
+        case 'tick':
+            if (state.phase === 'queued' && state.queuedAt !== null
+                && ev.now - state.queuedAt > CHECKIN_TIMEOUT_MS) {
+                return { phase: 'idle', queuedAt: null };
+            }
+            return state;
+    }
+}
+
+// ── Wave 2: map projection (Zone 05) ───────────────────────────────────
+
+/** Dota world-coordinate extent (both axes; symmetric around 0). */
+export const WORLD_MIN = -8500;
+export const WORLD_MAX = 8500;
+
+/** Project world (x, y) onto a square map of `size` px. Dota's y points up;
+ *  SVG's y points down — inverted here. Out-of-range values clamp to the edge. */
+export function worldToMap(x: number, y: number, size: number): { x: number; y: number } {
+    const norm = (v: number) => Math.max(0, Math.min(1, (v - WORLD_MIN) / (WORLD_MAX - WORLD_MIN)));
+    return { x: norm(x) * size, y: (1 - norm(y)) * size };
+}
+
+/** Minute-indexed baseline array → chart points (nulls/gaps skipped). */
+export function baselinePoints(series: ReadonlyArray<number | null> | null | undefined): Array<{ min: number; value: number }> {
+    if (!series) return [];
+    const out: Array<{ min: number; value: number }> = [];
+    series.forEach((v, i) => {
+        if (typeof v === 'number' && Number.isFinite(v)) out.push({ min: i, value: v });
+    });
+    return out;
+}
+
+// ── rc-audit R1 · U3 zone helpers ───────────────────────────────────────
+
+/** Row 09 — card anatomy = provenance. A Zone-06 slot occupant is the
+ *  'build' species ONLY when the engine slotted it AND supplied an item
+ *  slug (icon + chips can render). Everything else that lands in a slot
+ *  position — consumable/discipline nags — is the 'nag' species: amber
+ *  rule-line, no slot label, no item-card frame. */
+export type CardSpecies = 'build' | 'nag';
+export function cardSpecies(rec: Recommendation | null): CardSpecies | null {
+    if (!rec) return null;
+    return typeof rec.meta?.build_slot === 'string' && typeof rec.meta?.item === 'string'
+        ? 'build' : 'nag';
+}
+
+/** Rows 11/12 — mono stat chips from structured ITEM meta; only real values
+ *  render. compact drops MED before N (the AFTER column at tight widths). */
+export function itemChips(meta: ItemRecMeta, opts?: { compact?: boolean }): string[] {
+    const chips: string[] = [];
+    if (typeof meta.cost === 'number') chips.push(`${meta.cost}G`);
+    if (!opts?.compact && typeof meta.median_minute === 'number') {
+        chips.push(`MED ${Math.round(meta.median_minute)}'`);
+    }
+    if (typeof meta.win_rate === 'number') chips.push(`${Math.round(meta.win_rate * 100)}% WR`);
+    if (typeof meta.matches === 'number') {
+        chips.push(`N=${meta.matches >= 1000 ? `${(meta.matches / 1000).toFixed(1)}K` : meta.matches}`);
+    }
+    return chips;
+}
+
+/** Row 13 — cross-zone dedupe: a rec the directive owns renders only there. */
+export function filterDirectiveOwned<T extends Recommendation>(
+    recs: T[],
+    directiveKey: string | null | undefined,
+): T[] {
+    if (!directiveKey) return recs;
+    return recs.filter(r => `${r.category}|${r.title}` !== directiveKey);
+}
+
+/** Row 14 — when the directive IS the gold target, Zone06 swaps the NEXT
+ *  echo for AFTER + pivot preview; NEXT collapses to a slim reference. */
+export function mergeNextEcho(directiveIsGold: boolean, hasBuildNext: boolean): boolean {
+    return directiveIsGold && hasBuildNext;
+}
+
+// ── row 28: log decay ───────────────────────────────────────────────────
+
+/** Entries older than this compress to one-line footnotes. */
+export const LOG_FOOTNOTE_AGE_MS = 600_000;
+const LOG_DECAY_HALF_LIFE_MS = 240_000; // severity halves every 4 min
+const URGENCY_WEIGHT: Record<RecUrgency, number> = { CRITICAL: 3, IMPORTANT: 2, ROUTINE: 1 };
+
+export interface LogLayout { full: Recommendation[]; footnotes: Recommendation[]; }
+
+/** Recency × severity ordering: a decayed CRITICAL ranks below a fresh
+ *  IMPORTANT; >10-min entries become footnotes (a min-9 death at min 58 is
+ *  a footnote, not a headline). */
+export function logLayout(recs: Recommendation[], nowMs: number): LogLayout {
+    const full: Recommendation[] = [];
+    const footnotes: Recommendation[] = [];
+    for (const r of recs) {
+        (nowMs - (r.receivedAt ?? nowMs) > LOG_FOOTNOTE_AGE_MS ? footnotes : full).push(r);
+    }
+    const score = (r: Recommendation): number => {
+        const age = Math.max(0, nowMs - (r.receivedAt ?? nowMs));
+        return URGENCY_WEIGHT[effectiveUrgency(r)] * Math.pow(0.5, age / LOG_DECAY_HALF_LIFE_MS);
+    };
+    full.sort((a, b) => score(b) - score(a) || (b.receivedAt ?? 0) - (a.receivedAt ?? 0));
+    footnotes.sort((a, b) => (b.receivedAt ?? 0) - (a.receivedAt ?? 0));
+    return { full, footnotes };
+}
+
+/** Row 30 — dash normalization: space-delimited '--' / '- -' artifacts
+ *  become the system em-dash. Negative numbers + compound tokens survive. */
+export function normalizeDashes(text: string): string {
+    return text.replace(/(^|\s)(?:-\s-|--)(?=\s|$)/g, '$1—');
+}
+
+/** Row 33 — the map caption states only what IS shown; no cluster promise
+ *  until clusters actually render. */
+export function mapCaption(deaths: number, plottedMarks: number): string {
+    if (deaths <= 0) return 'No deaths this game.';
+    const n = `${deaths} death${deaths === 1 ? '' : 's'}`;
+    return plottedMarks > 0
+        ? `▲ ${n} — marked where they happened.`
+        : `▲ ${n} this game — position marks land as deaths are recorded.`;
+}
+
+// ── rows 34/38: the lane matchup card (Stratz leverage §1) ─────────────
+
+export interface LaneRow {
+    heroId: string;
+    name: string;
+    winPct: number | null;
+    stompPct: number;
+    matches: number;
+}
+
+/** Lane matchup rows, worst lane first (null win rates sink). Names resolve
+ *  via the intel roster — unresolvable ids are skipped (real-or-absent). */
+export function laneMatchupRows(
+    laneMatchups: Record<string, { matches: number; lane_win_rate: number | null; stomp_loss_rate: number }> | null | undefined,
+    players: ReadonlyArray<EnemyPlayerData> | null | undefined,
+    max = 3,
+): LaneRow[] {
+    if (!laneMatchups) return [];
+    const rows: LaneRow[] = [];
+    for (const [heroId, m] of Object.entries(laneMatchups)) {
+        const p = players?.find(pl => String(pl.hero_id) === heroId);
+        if (!p) continue;
+        rows.push({
+            heroId,
+            name: p.hero_name.replace(/^npc_dota_hero_/, '').replace(/_/g, ' '),
+            winPct: typeof m.lane_win_rate === 'number' ? Math.round(m.lane_win_rate * 100) : null,
+            stompPct: Math.round(m.stomp_loss_rate * 100),
+            matches: m.matches,
+        });
+    }
+    rows.sort((a, b) => (a.winPct ?? 101) - (b.winPct ?? 101));
+    return rows.slice(0, max);
+}
+
+/** Copy law (meta_store doc rule): "win it only X%" — never the inverse. */
+export function laneRowLine(row: LaneRow): string {
+    const name = row.name.toUpperCase();
+    const n = row.matches >= 1000 ? `${(row.matches / 1000).toFixed(1)}K` : `${row.matches}`;
+    return row.winPct !== null
+        ? `${name} — win it only ${row.winPct}% · stomp risk ${row.stompPct}% (N=${n})`
+        : `${name} — stomp risk ${row.stompPct}% (N=${n})`;
+}
+
+/** The one honest line: who stomps you most. */
+export function laneHonestLine(rows: LaneRow[]): string | null {
+    if (!rows.length) return null;
+    const worst = rows.reduce((a, b) => (b.stompPct > a.stompPct ? b : a));
+    return `HIGHEST STOMP RISK: ${worst.name.toUpperCase()} ${worst.stompPct}%`;
+}
+
+/** Row 35 — the enemy's likely next purchases, real-or-absent. */
+export function likelyNextLine(
+    predicted: ReadonlyArray<{ item: string; count: number; n_builds: number }> | null | undefined,
+    max = 2,
+): string | null {
+    if (!predicted || predicted.length === 0) return null;
+    const top = [...predicted].sort((a, b) => b.count - a.count).slice(0, max);
+    const names = top.map(p => p.item.replace(/_/g, ' ').toUpperCase()).join(' · ');
+    return `LIKELY NEXT: ${names} — HIGH-MMR n=${top[0].n_builds}`;
+}
+
+/** Row 36 — roster tail: top-2 by net worth + '+N MORE'. */
+export function rosterTail(
+    others: ReadonlyArray<{ hero_name: string; net_worth: number }>,
+    maxNames = 2,
+): string {
+    const sorted = [...others].sort((a, b) => b.net_worth - a.net_worth);
+    const shown = sorted.slice(0, maxNames).map(p =>
+        `${p.hero_name.replace(/^npc_dota_hero_/, '').replace(/_/g, ' ').toUpperCase()} ${(p.net_worth / 1000).toFixed(1)}k`);
+    const extra = sorted.length - shown.length;
+    return shown.join(' · ') + (extra > 0 ? ` · +${extra} MORE` : '');
+}
+
+// ── rows 34/38: zone-07 mode ───────────────────────────────────────────
+
+/** The lane card leads until lanes end, then yields to the threat. */
+export const LANE_CARD_UNTIL_S = 720;
+export type Zone07Mode = 'lane' | 'threat' | 'awaiting';
+export function zone07Mode(hasThreat: boolean, laneRowCount: number, clock: number | null): Zone07Mode {
+    const laneWindow = clock === null ? !hasThreat : clock <= LANE_CARD_UNTIL_S;
+    if (laneRowCount > 0 && laneWindow) return 'lane';
+    if (hasThreat) return 'threat';
+    return 'awaiting';
+}

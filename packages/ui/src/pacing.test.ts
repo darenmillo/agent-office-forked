@@ -62,6 +62,112 @@ describe('ingestRecs displacement', () => {
     });
 });
 
+describe('slot-keyed ITEM displacement (B5)', () => {
+    const buildRec = (title: string, slot: 'next' | 'after' | 'pivot', item: string, priority = 3) =>
+        rec({ category: 'ITEM', title, priority, tags: ['build', 'intel'], meta: { item, build_slot: slot } });
+
+    it('keeps slotted build cards when a slotless higher-priority ITEM arrives (07-17 field scenario)', () => {
+        const store = ingestRecs([], [
+            buildRec('Next: Shivas Guard', 'next', 'shivas_guard', 3),
+            buildRec('After: Heart', 'after', 'heart', 3),
+            buildRec('Blade Mail counters PA', 'pivot', 'blade_mail', 2),
+            buildRec('Pipe vs magic burst', 'pivot', 'pipe', 2),
+        ], T0);
+        expect(store).toHaveLength(4);
+        const out = ingestRecs(
+            store,
+            [rec({ category: 'ITEM', title: 'Buy BKB now', priority: 4, meta: { item: 'black_king_bar' } })],
+            T0 + 1_000,
+        );
+        expect(out.map(r => r.title)).toEqual(expect.arrayContaining([
+            'Next: Shivas Guard', 'After: Heart', 'Blade Mail counters PA', 'Pipe vs magic burst', 'Buy BKB now',
+        ]));
+        expect(out).toHaveLength(5);
+    });
+
+    it('incoming next evicts exactly the old next — other slots and slotless recs survive', () => {
+        const store = [
+            buildRec('Next: Soul Booster', 'next', 'soul_booster', 3),
+            buildRec('After: Heart', 'after', 'heart', 3),
+            buildRec('Blade Mail counters PA', 'pivot', 'blade_mail', 2),
+            rec({ category: 'ITEM', title: 'Buy Magic Wand', priority: 2, meta: { item: 'magic_wand' } }),
+        ];
+        const out = ingestRecs(store, [buildRec('Next: Shivas Guard', 'next', 'shivas_guard', 3)], T0 + 1_000);
+        const titles = out.map(r => r.title);
+        expect(titles).not.toContain('Next: Soul Booster');
+        expect(titles).toEqual(expect.arrayContaining([
+            'Next: Shivas Guard', 'After: Heart', 'Blade Mail counters PA', 'Buy Magic Wand',
+        ]));
+        expect(out).toHaveLength(4);
+    });
+
+    it('incoming build rec evicts the old rec carrying the same item, regardless of slot', () => {
+        const store = [
+            buildRec('Blade Mail counters PA', 'pivot', 'blade_mail', 2),
+            buildRec('Next: Soul Booster', 'next', 'soul_booster', 3),
+        ];
+        const out = ingestRecs(store, [buildRec('Next: Blade Mail', 'next', 'blade_mail', 3)], T0 + 1_000);
+        const titles = out.map(r => r.title);
+        expect(titles).not.toContain('Blade Mail counters PA'); // same item claimed by the new next
+        expect(titles).not.toContain('Next: Soul Booster');     // same slot
+        expect(out).toHaveLength(1);
+    });
+
+    it('a slotted incoming never sweeps slotless recs by priority', () => {
+        const wand = rec({ category: 'ITEM', title: 'Buy Magic Wand', priority: 1, meta: { item: 'magic_wand' } });
+        const out = ingestRecs([wand], [buildRec('Next: Shivas Guard', 'next', 'shivas_guard', 5)], T0);
+        expect(out.map(r => r.title)).toEqual(
+            expect.arrayContaining(['Buy Magic Wand', 'Next: Shivas Guard']),
+        );
+    });
+
+    it('an item-less batch no longer wipes ITEM cards (Zone 06 blanking disease)', () => {
+        const store = [
+            rec({ category: 'ITEM', title: 'Buy Magic Wand', priority: 2 }),
+            buildRec('Next: Shivas Guard', 'next', 'shivas_guard', 3),
+        ];
+        const out = ingestRecs(store, [rec({ category: 'GENERAL', title: 'ambient read', tier: 'ANALYTICAL' })], T0 + 1_000);
+        expect(out.map(r => r.title)).toEqual(
+            expect.arrayContaining(['Buy Magic Wand', 'Next: Shivas Guard', 'ambient read']),
+        );
+    });
+
+    it('slotless-vs-slotless keeps the legacy priority sweep', () => {
+        const low = rec({ category: 'ITEM', title: 'boots', priority: 2 });
+        const high = rec({ category: 'ITEM', title: 'bkb', priority: 5 });
+        const out = ingestRecs([low, high], [rec({ category: 'ITEM', title: 'kaya', priority: 4 })], T0);
+        const titles = out.map(r => r.title);
+        expect(titles).not.toContain('boots');
+        expect(titles).toContain('bkb');
+        expect(titles).toContain('kaya');
+    });
+
+    it('ITEM budget fits NEXT+AFTER+two pivots alongside legacy recs', () => {
+        const store = [
+            buildRec('Next: Shivas Guard', 'next', 'shivas_guard', 3),
+            buildRec('After: Heart', 'after', 'heart', 3),
+            buildRec('Blade Mail counters PA', 'pivot', 'blade_mail', 2),
+            buildRec('Pipe vs magic burst', 'pivot', 'pipe', 2),
+            rec({ category: 'ITEM', title: 'Buy BKB now', priority: 4, meta: { item: 'black_king_bar' } }),
+            rec({ category: 'ITEM', title: 'Buy Magic Wand', priority: 1 }),
+        ];
+        const out = visibleRecs(store, T0 + 1_000);
+        expect(out.filter(r => r.category === 'ITEM')).toHaveLength(6);
+    });
+});
+
+describe('build-rec age window (B5)', () => {
+    it('build-tagged ITEM recs get the 15-minute window, bypassing the urgency cap', () => {
+        expect(ageWindow(rec({ category: 'ITEM', urgency: 'IMPORTANT', tags: ['build', 'intel'] }))).toBe(900_000);
+        expect(ageWindow(rec({ category: 'ITEM', urgency: 'CRITICAL', tags: ['build'] }))).toBe(900_000);
+    });
+
+    it('non-build ITEM windows are unchanged', () => {
+        expect(ageWindow(rec({ category: 'ITEM', urgency: 'IMPORTANT' }))).toBe(480_000);
+        expect(ageWindow(rec({ category: 'ITEM', urgency: 'CRITICAL' }))).toBe(90_000);
+    });
+});
+
 describe('age windows', () => {
     it('GENERAL is finite now (no immortal cards)…', () => {
         expect(ageWindow(rec({ category: 'GENERAL', priority: 1 }))).toBeLessThan(Infinity);
@@ -85,7 +191,7 @@ describe('visibleRecs budgets + role weighting', () => {
         const items = Array.from({ length: 8 }, (_, i) =>
             rec({ category: 'ITEM', title: `item${i}`, priority: i }));
         const out = visibleRecs(items, T0);
-        expect(out.filter(r => r.category === 'ITEM')).toHaveLength(4);
+        expect(out.filter(r => r.category === 'ITEM')).toHaveLength(6); // ITEM budget = 6 since B5
         expect(out[0].title).toBe('item7'); // highest priority survived
     });
 

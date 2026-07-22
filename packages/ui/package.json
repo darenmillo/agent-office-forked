@@ -6,6 +6,8 @@
     "scripts": {
         "dev": "vite",
         "build": "tsc",
+        "build:raijin": "vite build --config vite.raijin.config.ts",
+        "deploy:raijin": "npm run build:raijin && node scripts/deploy-raijin.mjs",
         "test": "jest"
     },
     "dependencies": {
@@ -34,7 +36,8 @@
         "globals": {
             "ts-jest": {
                 "tsconfig": {
-                    "strict": false
+                    "strict": false,
+                    "jsx": "react"
                 }
             }
         }

@@ -18,6 +18,9 @@ import { bcast, pip } from '../raijinTheme';
 interface Props {
     visible: boolean;
     onOpenScouting: () => void;
+    /** Last known player team (radiant/dire) — gates the dossier's enemy
+     *  filter. null = unknown → show NO enemies (never mixed teams). */
+    myTeam?: string | null;
 }
 
 interface SkinTokens {
@@ -54,34 +57,71 @@ const SKINS: Record<'broadcast' | 'dossier', SkinTokens> = {
     },
 };
 
+interface Claim { id: string; effect: string; n: number; tier?: string }
 interface LeakProfile {
     headline?: string;
     patterns?: string[];
+    matches?: number;
 }
 
-export function RaijinBriefingRoom({ visible, onOpenScouting }: Props) {
+export function RaijinBriefingRoom({ visible, onOpenScouting, myTeam = null }: Props) {
     const [skin, setSkin] = useState<'broadcast' | 'dossier'>(() =>
         localStorage.getItem('raijin-briefing-skin') === 'dossier' ? 'dossier' : 'broadcast');
     const [leaks, setLeaks] = useState<LeakProfile | null>(null);
     const [leaksTried, setLeaksTried] = useState(false);
+    const [enemies, setEnemies] = useState<string[]>([]);
 
     useEffect(() => {
         if (!visible) return;
         let cancelled = false;
-        // Personal-patterns miner output — graceful empty state if the engine
-        // doesn't expose it yet (the miner writes data/raijin/personal/).
+        // v2 confidence-gated profile: CONFIRMED claims only reach the UI as
+        // leaks (a wrong confident read tilts). Honest empty state when no mine.
         fetch(`${RAIJIN_API}/api/personal-patterns`)
             .then(r => (r.ok ? r.json() : null))
             .then(d => {
                 if (cancelled) return;
-                if (d && (d.headline || d.patterns?.length)) {
-                    setLeaks({ headline: d.headline, patterns: d.patterns });
+                const confirmed: Claim[] = (d?.confirmed || []).filter((c: Claim) => !c.id?.startsWith('role_'));
+                const role: Claim | undefined = (d?.confirmed || []).find((c: Claim) => c.id?.startsWith('role_'));
+                if (confirmed.length || role) {
+                    const tv = d?.trade_verdict_distribution;
+                    const headline = tv?.caught_share != null
+                        ? `${Math.round(tv.caught_share * 100)}% of your deaths were caught out of position`
+                        : role?.effect;
+                    setLeaks({
+                        headline,
+                        patterns: confirmed.slice(0, 4).map(c => `${c.effect}  (n=${c.n})`),
+                        matches: d?.matches_analyzed,
+                    });
                 }
             })
-            .catch(() => { /* endpoint absent — honest empty state below */ })
+            .catch(() => { /* honest empty state below */ })
             .finally(() => { if (!cancelled) setLeaksTried(true); });
+        // Known enemies for a real dossier (no fabrication — names only until
+        // scouted). Review P1: /api/enemy-intel returns ALL TEN players — the
+        // old unfiltered map listed the player's own team (and own hero) as
+        // "known enemies". Filter to the opposing team; unknown team → none.
+        fetch(`${RAIJIN_API}/api/enemy-intel`)
+            .then(r => (r.ok ? r.json() : null))
+            .then(d => {
+                if (cancelled) return;
+                const mine = (myTeam || '').toLowerCase();
+                const players: Array<{ hero_name?: string; hero?: string; team?: string | number }> =
+                    d?.players || d?.enemies || [];
+                const names: string[] = players
+                    .filter(p => {
+                        if (!mine) return false; // team unknown → never guess
+                        const t = String(p.team ?? '').toLowerCase();
+                        // team arrives as radiant/dire or Valve's 2/3
+                        const norm = t === '2' ? 'radiant' : t === '3' ? 'dire' : t;
+                        return norm !== '' && norm !== mine;
+                    })
+                    .map(p => p.hero_name || p.hero || '')
+                    .filter(Boolean);
+                setEnemies(names);
+            })
+            .catch(() => { /* none known yet */ });
         return () => { cancelled = true; };
-    }, [visible]);
+    }, [visible, myTeam]);
 
     if (!visible) return null;
     const t = SKINS[skin];
@@ -151,9 +191,11 @@ export function RaijinBriefingRoom({ visible, onOpenScouting }: Props) {
                 </button>
             </div>
 
-            {/* Your leak profile — the patterns miner gets a UI */}
+            {/* Your leak profile — v2 CONFIRMED claims (evidence-gated) */}
             <div style={card}>
-                <div style={label}>Your leak profile</div>
+                <div style={label}>
+                    Your CONFIRMED leaks{leaks?.matches ? ` · ${leaks.matches} games` : ''}
+                </div>
                 {leaks?.patterns?.length ? (
                     <>
                         {leaks.headline && (
@@ -168,19 +210,33 @@ export function RaijinBriefingRoom({ visible, onOpenScouting }: Props) {
                 ) : (
                     <div style={{ fontSize: 15, color: t.muted, lineHeight: 1.5 }}>
                         {leaksTried
-                            ? 'No mined profile exposed by the engine yet — run /raijin-retro to refresh personal patterns.'
+                            ? 'No CONFIRMED profile yet — run /raijin-retro (needs enough games to graduate a claim).'
                             : 'Loading your mined patterns…'}
                     </div>
                 )}
             </div>
 
-            {/* Enemy dossier — fills from scouting/draft once enemies are known */}
+            {/* Enemy dossier — real known enemies, no fabricated threat reads */}
             <div style={card}>
-                <div style={label}>Enemy dossier</div>
-                <div style={{ fontSize: 15, color: t.muted, lineHeight: 1.5 }}>
-                    Threat cards build here as enemies are known (draft, bot, or scouting).
-                    In pubs the draft rarely auto-fills —
-                </div>
+                <div style={label}>Enemy dossier{enemies.length ? ` · ${enemies.length} known` : ''}</div>
+                {enemies.length ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                        {enemies.map((name, i) => (
+                            <span key={i} style={{
+                                fontSize: 14, color: t.ink, background: 'transparent',
+                                border: `1px solid ${t.panelBorder}`, borderRadius: t.radius || 6,
+                                padding: '3px 9px', fontWeight: 600,
+                            }}>
+                                {name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                            </span>
+                        ))}
+                    </div>
+                ) : (
+                    <div style={{ fontSize: 15, color: t.muted, lineHeight: 1.5 }}>
+                        No enemies known yet. In pubs the draft rarely auto-fills —
+                        scout them the moment the loadout screen shows.
+                    </div>
+                )}
                 <button
                     onClick={onOpenScouting}
                     style={{
@@ -197,7 +253,7 @@ export function RaijinBriefingRoom({ visible, onOpenScouting }: Props) {
                         cursor: 'pointer',
                     }}
                 >
-                    ▸ OPEN SCOUTING
+                    ▸ {enemies.length ? 'REFINE SCOUTING' : 'OPEN SCOUTING'}
                 </button>
             </div>
 

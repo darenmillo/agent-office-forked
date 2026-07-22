@@ -29,9 +29,62 @@ export interface HeroData {
     enemy_heroes: string[];
     allied_heroes: string[];
     my_team: string;
+    // Wave 2 additive fields (engine ≥ feat/raijin-maxout) — render-if-present.
+    /** True net worth from GSI (replaces the gold-earned proxy when present). */
+    net_worth?: number;
+    /** World coordinates from GSI — feed Zone 05's player dot. */
+    xpos?: number;
+    ypos?: number;
+    /** Buyback state — Zone 01 endgame line. */
+    buyback_cost?: number;
+    buyback_cooldown?: number;
 }
 
 export type RecUrgency = 'CRITICAL' | 'IMPORTANT' | 'ROUTINE';
+
+/** Trade-ledger death verdicts (Wave 2 — `Recommendation.meta.verdict`). */
+export type DeathVerdict = 'TRADE' | 'EVEN_TRADE' | 'FIGHT_DEATH' | 'CAUGHT';
+
+/** Structured ITEM-rec fields (bracket-filtered STRATZ, engine-supplied). */
+export interface ItemRecMeta {
+    /** CDN slug, e.g. "black_king_bar". */
+    item?: string;
+    cost?: number;
+    median_minute?: number;
+    win_rate?: number;
+    matches?: number;
+    share?: number;
+    /** Zone 06 slot the engine assigned this rec ('next' | 'after' | 'pivot'). */
+    build_slot?: 'next' | 'after' | 'pivot';
+}
+
+/** Trade-ledger block on death recs. */
+export interface DeathRecMeta {
+    verdict?: DeathVerdict;
+    net?: number;
+    own_kills?: number;
+    assists?: number;
+    team_for?: number;
+    team_against?: number;
+    x?: number;
+    y?: number;
+    respawn?: number;
+}
+
+/** Latency honesty on LLM recs. */
+export interface LlmRecMeta {
+    latency_ms?: number;
+    delivered_alive?: boolean;
+}
+
+/** rc-audit R1 (row 31): engine honesty flags — additive. */
+export interface HonestyRecMeta {
+    /** The engine marked the net-worth figure in this rec as approximate. */
+    nw_approx?: boolean;
+}
+
+/** Additive per-rec metadata — engine populates the block matching the rec kind. */
+export type RecMeta = ItemRecMeta & DeathRecMeta & LlmRecMeta & HonestyRecMeta & Record<string, unknown>;
 
 export interface Recommendation {
     category: 'ITEM' | 'SKILL' | 'TIMER' | 'FIGHT' | 'GENERAL';
@@ -49,6 +102,8 @@ export interface Recommendation {
     tts_text?: string;
     /** Optional tag list — used by the UI for tag-based filtering (e.g. 'knowledge', 'phase'). */
     tags?: string[];
+    /** Wave 2: additive structured metadata (item stats / death ledger / LLM latency). */
+    meta?: RecMeta;
 }
 
 /**
@@ -92,9 +147,41 @@ export interface UIUpdate {
         | 'settings_update'
         | 'post_game_update'    // v4.1.1: async narrative / OpenDota result landed
         | 'timers'              // v6: timer-rail state (absolute clock values)
-        | 'stance';             // v6: FARM/FIGHT/PUSH stance banner
+        | 'stance'              // v6: FARM/FIGHT/PUSH stance banner
+        | 'gap_baseline'        // Wave 2: reference curves for Zone 04 (honest sources)
+        | 'winnability'         // Wave 2: P(win) from the offline bracket table
+        | 'activity';           // A-7: pulse-check feed event
     data: Record<string, unknown>;
     timestamp: number;
+}
+
+/** Wave 2 — Zone 04 reference series. Every array is minute-indexed from 0;
+ *  absent/null arrays mean that source has no data (render nothing). */
+export interface GapBaselineData {
+    source: string;
+    /** Personal median net worth by minute (own Stratz match cache). */
+    nw_by_minute?: number[] | null;
+    /** Bracket-average ghost curve for this hero+position. */
+    ghost_nw_by_minute?: number[] | null;
+    ghost_cs_by_minute?: number[] | null;
+    ghost_deaths_by_minute?: number[] | null;
+    /** Honest legend label for the ghost, e.g. "CRUSADER P3 AXE AVG". */
+    ghost_label?: string | null;
+    /** Per-minute team gold advantage (GC bot) — null until the bot delivers. */
+    team_graph_gold?: number[] | null;
+    labels?: Record<string, string>;
+}
+
+/** Wave 2 — anti-tilt win probability. Absent message = sample too thin;
+ *  the UI must render nothing rather than a fake number. */
+export interface WinnabilityData {
+    p_win: number;
+    input: string;
+    kill_diff?: number;
+    clock?: number;
+    n?: number;
+    comeback_pct?: number;
+    hint?: string;
 }
 
 /** v6: stance-engine decision rendered by RaijinStanceBanner. */
@@ -104,6 +191,38 @@ export interface StanceData {
     confidence: number;
     discipline: boolean;
     inputs?: Record<string, unknown>;
+}
+
+/** A-7: pulse-check feed event ('activity' WS push + GET /api/activity backfill). */
+export interface ActivityEvent {
+    ts: number;       // unix seconds
+    kind: string;     // llm | rec | error | bot | engine | stratz (open vocab)
+    label: string;
+    detail?: string;
+    ok: boolean;
+}
+
+/** A6.4: personal hero record from GET /api/hero-card. 404 = no data = no card. */
+export interface HeroCardData {
+    hero_id: number;
+    hero_name: string | null;
+    games: number;
+    wr: number;
+    avg_deaths?: number;
+    kda?: number;
+    gpm?: number;
+    /** Your WR minus bracket WR on this hero; absent when bracket unknown. */
+    wr_delta?: number;
+    bracket_wr?: number;
+}
+
+/** A6.2: enemy spike-forecast band riding the TIMERS rail (bracket medians). */
+export interface SpikeBand {
+    hero: string;
+    item: string;
+    /** Absolute game minute the bracket-median buyer has this item. */
+    eta_minute: number;
+    label: string;
 }
 
 /** v6: timer-rail snapshot (absolute game-clock values; UI extrapolates). */
@@ -116,6 +235,7 @@ export interface TimerRailData {
     tormentor?: { status: 'pending' | 'respawning' | 'up'; at: number | null };
     roshan?: { status: 'unknown' | 'dead' | 'window' | 'up'; early: number | null; late: number | null };
     aegis?: { expires_at: number };
+    spike_bands?: SpikeBand[];
 }
 
 /** Per-player data from GC Bot GetRealtimeStats (~2 min delayed). */
@@ -129,9 +249,17 @@ export interface EnemyPlayerData {
     assists: number;
     items: string[];    // up to 6 item keys
     net_worth: number;
-    ultimate_state: number;    // always 0 (not available from API)
-    ultimate_cooldown: number; // always 0
-    respawn_timer: number;     // always 0
+    /** Wave 2: enemy farm rate (GC deep parse) — absent on older engines. */
+    last_hits?: number;
+    denies?: number;
+    /** Stub fields — the engine nulls these (never real); do not render. */
+    ultimate_state?: number | null;
+    ultimate_cooldown?: number | null;
+    respawn_timer?: number | null;
+    /** rc-audit leverage §2: the enemy's likely next purchases — top items
+     *  from the ENEMY-perspective high-MMR guide cache. Real-or-absent;
+     *  allies always []. */
+    predicted_build?: Array<{ item: string; count: number; n_builds: number }>;
 }
 
 /** Full match intel from GC Bot, broadcast every ~8s. */
@@ -143,11 +271,18 @@ export interface EnemyIntelData {
     radiant_tower_state: number;
     dire_tower_state: number;
     players: EnemyPlayerData[];
+    /** rc-audit leverage §1: per-enemy lane matchup vs YOUR hero. Hero-id
+     *  STRING keys; engine ships matches>=50 only; lane_win_rate null when
+     *  the denominator is 0. Copy law: render "win it only X%" — never the
+     *  inverse. */
+    lane_matchups?: Record<string, { matches: number; lane_win_rate: number | null; stomp_loss_rate: number }>;
 }
 
 export interface DimensionGrade {
     dimension: 'farming' | 'fighting' | 'objectives' | 'map_awareness' | 'itemization';
-    grade: 'S' | 'A' | 'B' | 'C' | 'D' | 'F';
+    /** '—' = not measured (Track F honesty — e.g. objectives without
+     *  tower-participation data). Render blank score + no bar. */
+    grade: 'S' | 'A' | 'B' | 'C' | 'D' | 'F' | '—';
     score: number;
     callout: string;
 }
@@ -170,6 +305,14 @@ export interface PostGameReport {
     /** Phase 5a: tri-state — null (not yet enriched), StructuredNarrative (new), or string (v4.0 back-compat). */
     narrative: StructuredNarrative | string | null;
     key_moments: Array<{ type: string; clock_time: number; wall_time: string; data: Record<string, unknown> }>;
+    /** rc-audit row 47 — deterministic postgame verdict (engine-computed,
+     *  zero LLM). All fields render-if-present; never fabricated. */
+    verdict?: {
+        what_lost_it?: string | null;
+        the_one_habit?: string | null;
+        next_drill?: string | null;
+        personal_line?: string | null;
+    } | null;
 }
 
 /** Phase 5c — Sonnet 4.6 per-death analysis, persists in the death panel across respawn. */

@@ -9,6 +9,89 @@
  */
 import type { CSSProperties } from 'react';
 
+// ── v3 CONSOLE TOKENS ──────────────────────────────────────────────────
+// Direction: RAIJIN CONSOLE (2026-07-08 handoff) — instrument panel: numbered
+// zones, hairline rules, no boxes, radius 0, no shadows, one amber accent.
+// Source of truth: "Retro futurism UI design/design_handoff_raijin_console".
+export const console_ = {
+    // Palette
+    base:   '#0B0C0E',   // board background
+    base2:  '#08090B',   // tape strip background
+    line:   '#21252B',   // primary hairline rules (zone separators)
+    line2:  '#171A1F',   // secondary hairlines (in-zone rows, chart grid)
+    ink:    '#EDF1F6',   // headline text
+    body:   '#C9D1DA',   // primary text
+    muted:  '#7E8896',   // secondary/reading text
+    chrome: '#4A525E',   // zone labels, header meta — never coaching content
+    ghost:  '#2A3038',   // inert annotations, deselected states
+    ghostLine: '#3A414B', // median-curve stroke
+    amber:  '#FFB000',   // THE accent: directive emphasis, progress, YOU, NOW
+    gold:   '#F5C518',   // imminent windows (Rosh pending, situational header)
+    dire:   '#FF5964',   // enemy / danger / CRITICAL / deaths
+    radiant:'#3BE0A0',   // positive / ready / complete
+    blue:   '#5AA9FF',   // neutral timers (stack, rune)
+    river:  '#2A3B4D',   // map schematic river band
+
+    stanceFarm:  '#4FA3FF',
+    stanceFight: '#FF6A3D',
+    stancePush:  '#F5C518',
+
+    // PHOSPHOR voice (Round-2 C) — reserved for LLM-authored reads only:
+    // the amber-monochrome register marks "the coach speaking" vs rule
+    // instruments. Never used for rule-based content.
+    phosDim: '#6B5A20',
+    phos:    '#D9B96A',
+    phosInk: '#EFE3C0',
+
+    // Typography
+    display: "'Chakra Petch', 'Bahnschrift', 'Segoe UI', sans-serif",
+    mono: "'IBM Plex Mono', ui-monospace, Consolas, monospace", // DEFAULT board font
+    reading: "Inter, 'Segoe UI', system-ui, sans-serif",
+
+    // Type scale (px) — per handoff README
+    tZone: 11,        // zone label (tracking .26em, uppercase, chrome)
+    tMicro: 10,       // micro-annotation (.18–.22em)
+    tTimecode: 12,
+    tCaption: 13,     // 13–13.5 Inter captions
+    tLog: 15.5,       // log rows (reading-distance floor)
+    tReading: 16,     // why-lines
+    tStanceAlt: 19,   // inactive stance words
+    tClock: 17,       // header clock
+    tThreat: 20,      // threat name (Chakra)
+    tGap: 36,         // gap numeral (Chakra)
+    tStance: 40,      // stance word (Chakra)
+    tDirective: 52,   // directive (Chakra, lh 1.02, tracking .005em)
+
+    ease: 'cubic-bezier(.2,.7,.3,1)',
+} as const;
+
+/** Zone label row text — `01 · DIRECTIVE` style. */
+export const czLabel: CSSProperties = {
+    fontSize: console_.tZone,
+    letterSpacing: '.26em',
+    color: console_.chrome,
+    fontFamily: console_.mono,
+    textTransform: 'uppercase',
+};
+
+/** Micro annotation (ghost) — right side of zone label rows. */
+export const czMicro: CSSProperties = {
+    fontSize: console_.tMicro,
+    letterSpacing: '.18em',
+    color: console_.ghost,
+    fontFamily: console_.mono,
+    textTransform: 'uppercase',
+};
+
+export function consoleStanceColor(stance: 'FARM' | 'FIGHT' | 'PUSH' | string): string {
+    switch (stance) {
+        case 'FARM': return console_.stanceFarm;
+        case 'FIGHT': return console_.stanceFight;
+        case 'PUSH': return console_.stancePush;
+        default: return console_.muted;
+    }
+}
+
 // ── v2 BROADCAST TOKENS ────────────────────────────────────────────────
 export const bcast = {
     // Palette (WCAG-AA verified pairs on base)

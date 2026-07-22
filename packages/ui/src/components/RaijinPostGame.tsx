@@ -5,6 +5,7 @@
  * post-game report attached (or fetched from /api/post-game/latest). */
 import React, { useEffect, useState } from 'react';
 import { DimensionGrade, PostGameReport, RAIJIN_API, StructuredNarrative } from '../raijinTypes';
+import { RaijinDeathHeatmap } from './RaijinDeathHeatmap';
 import { pip, glow, glowText } from '../raijinTheme';
 
 interface Props {
@@ -20,6 +21,7 @@ const GRADE_COLOR: Record<string, string> = {
     C: '#FFD54F',
     D: '#FF8C00',
     F: '#FF4136',
+    '—': '#4A525E', // not measured — neutral, must not read as a grade
 };
 
 const DIM_LABEL: Record<string, string> = {
@@ -189,6 +191,9 @@ export function RaijinPostGame({ report, onDismiss, onViewHistory }: Props) {
                         })}
                     </div>
                 )}
+
+                {/* Death heatmap — last ~20 games' deaths + leak flags (Track F) */}
+                <RaijinDeathHeatmap />
 
                 {/* Footer */}
                 <div style={{ marginTop: pip.sp4, textAlign: 'center' }}>
@@ -440,24 +445,28 @@ function GradeCard({ grade }: { grade: DimensionGrade }) {
                     color: pip.amberFaint,
                     fontVariantNumeric: 'tabular-nums',
                 }}>
-                    {grade.score.toFixed(0)}
+                    {/* A-6: a not-measured dimension must not render a literal
+                        0 next to "Not measured" — that reads as a failing score. */}
+                    {grade.grade === '—' ? '' : grade.score.toFixed(0)}
                 </span>
             </div>
-            {/* Score bar */}
-            <div style={{
-                height: 4,
-                background: pip.bgDeep,
-                position: 'relative',
-                border: `1px solid ${pip.amberGhost}`,
-            }}>
+            {/* Score bar — hidden entirely for not-measured dimensions */}
+            {grade.grade !== '—' && (
                 <div style={{
-                    position: 'absolute',
-                    left: 0, top: 0, bottom: 0,
-                    width: `${Math.max(0, Math.min(100, grade.score))}%`,
-                    background: color,
-                    boxShadow: `0 0 6px ${color}66`,
-                }} />
-            </div>
+                    height: 4,
+                    background: pip.bgDeep,
+                    position: 'relative',
+                    border: `1px solid ${pip.amberGhost}`,
+                }}>
+                    <div style={{
+                        position: 'absolute',
+                        left: 0, top: 0, bottom: 0,
+                        width: `${Math.max(0, Math.min(100, grade.score))}%`,
+                        background: color,
+                        boxShadow: `0 0 6px ${color}66`,
+                    }} />
+                </div>
+            )}
             <div style={{
                 fontSize: pip.textSm,
                 color: pip.amber,

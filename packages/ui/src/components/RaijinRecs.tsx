@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
+    ActivityEvent,
+    HeroCardData,
     HeroData,
     Recommendation,
     UIUpdate,
@@ -9,22 +11,28 @@ import {
     RAIJIN_API,
     RAIJIN_WS,
 } from '../raijinTypes';
-import { bcast, bLabel, bNum } from '../raijinTheme';
+import { bcast, bLabel, bNum, console_ } from '../raijinTheme';
 import { ingestRecs, visibleRecs, Role } from '../pacing';
-import { RaijinHeroDisplay } from './RaijinHeroDisplay';
-import { RaijinStrategy } from './RaijinStrategy';
-import { RaijinActionBar } from './RaijinActionBar';
-import { RaijinTeamIntel } from './RaijinTeamIntel';
+// CONSOLE redesign (2026-07-08): the live board is RaijinConsole; the old
+// bcast components (ActionBar/StanceBanner/Strategy/TimerRail/TeamIntel/
+// HeroDisplay) are unwired but kept on disk as reference.
+import { RaijinConsole } from './console/RaijinConsole';
+import { ActivityStrip } from './console/ActivityStrip';
 import { RaijinEnemyPicker } from './RaijinEnemyPicker';
 import { RaijinScoutingForm } from './RaijinScoutingForm';
 import { RaijinDeathPanel } from './RaijinDeathPanel';
 import { RaijinSettings } from './RaijinSettings';
 import { RaijinPostGame } from './RaijinPostGame';
 import { RaijinHistory } from './RaijinHistory';
-import { RaijinStanceBanner } from './RaijinStanceBanner';
-import { RaijinTimerRail } from './RaijinTimerRail';
 import { RaijinBriefingRoom } from './RaijinBriefingRoom';
-import type { PostGameReport, RecUrgency, StanceData, TimerRailData } from '../raijinTypes';
+import {
+    GapPoint, upsertGapPoint, bucketMinute, goldEarnedProxy,
+    CheckinState, checkinNext, llmKind,
+} from '../console';
+import type {
+    GapBaselineData, PostGameReport, RecUrgency, StanceData,
+    TimerRailData, WinnabilityData,
+} from '../raijinTypes';
 
 const OFFICE_API = 'http://localhost:3000';
 /** App.tsx sidebar is 48px — the old left:56 left an 8px dead gutter. */
@@ -41,7 +49,14 @@ const ROLES: Array<{ id: Role; label: string }> = [
     { id: 'hard_support', label: 'POS5' },
 ];
 
-export function RaijinRecs() {
+interface RaijinRecsProps {
+    /** Standalone :5050 build (iframe tab in the command center, Track-4 D2/D3):
+     *  engine control goes same-origin to bot_manager and there is no shell rail. */
+    standalone?: boolean;
+}
+
+export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
+    const ctlBase = standalone ? '' : OFFICE_API;
     const [heroData, setHeroData] = useState<HeroData | null>(null);
     const [enemyIntel, setEnemyIntel] = useState<EnemyIntelData | null>(null);
     const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
@@ -49,6 +64,12 @@ export function RaijinRecs() {
     const [serverStatus, setServerStatus] = useState<ServerStatus>('stopped');
     // Enemy source tracking (GSI draft / bot / manual / none) — drives auto-picker open
     const [enemySource, setEnemySource] = useState<EnemySource>('none');
+    const [heroCard, setHeroCard] = useState<HeroCardData | null>(null);
+    // A6.4: one fetch per (match, hero) — hero_id lands after hero select, so
+    // the key retries each hero_status until identity is real.
+    const heroCardKeyRef = useRef<string | null>(null);
+    // A-7: pulse-check strip — engine activity (backfill on connect + WS push)
+    const [activityFeed, setActivityFeed] = useState<ActivityEvent[]>([]);
     const [pickerOpen, setPickerOpen] = useState(false);
     const pickerAutoOpenedRef = useRef<boolean>(false);
     // v5.0 Phase 4: scouting form state — pre/mid-game role + lane + ally/enemy roles
@@ -60,6 +81,7 @@ export function RaijinRecs() {
     const [settingsOpen, setSettingsOpen] = useState(false);
     // Phase 4: post-game report state
     const [postGameReport, setPostGameReport] = useState<PostGameReport | null>(null);
+    const [controlsLegendOpen, setControlsLegendOpen] = useState(false); // rc-audit row 39
     // v6 Phase 3: FARM/FIGHT/PUSH stance banner
     const [stance, setStance] = useState<StanceData | null>(null);
     // v6 Phase 12: timer rail + bracket badge + MMR trend
@@ -87,6 +109,55 @@ export function RaijinRecs() {
     const wsRef = useRef<WebSocket | null>(null);
     const retryRef = useRef<number>(1000);
 
+    // CONSOLE derived-state feeds (Zone 04 gap + header link health).
+    const [gapSeries, setGapSeries] = useState<GapPoint[]>([]);
+    const [enemyIntelAt, setEnemyIntelAt] = useState<number | null>(null);
+    const [lastHeroAt, setLastHeroAt] = useState<number | null>(null);
+    const prevDeathsRef = useRef(0);
+    const matchIdRef = useRef<string | null>(null);
+    const heroDataRef = useRef<HeroData | null>(null);
+
+    // Wave 2 feeds — reference curves, winnability, death positions, CHECK-IN.
+    const [gapBaseline, setGapBaseline] = useState<GapBaselineData | null>(null);
+    const [winnability, setWinnability] = useState<{ data: WinnabilityData; receivedAt: number } | null>(null);
+    const [deathSpots, setDeathSpots] = useState<Array<{ x: number; y: number }>>([]);
+    const deathSpotKeysRef = useRef<Set<string>>(new Set());
+    /** True once GSI delivered real net_worth — flips Zone 04's YOU label. */
+    const [youIsNetWorth, setYouIsNetWorth] = useState(false);
+    const [checkin, setCheckin] = useState<CheckinState>({ phase: 'idle', queuedAt: null });
+    const [ambientLlm, setAmbientLlm] = useState<boolean | null>(null);
+
+    const resetWave2State = useCallback(() => {
+        setGapBaseline(null);
+        setWinnability(null);
+        setDeathSpots([]);
+        deathSpotKeysRef.current = new Set();
+        setYouIsNetWorth(false);
+        setCheckin({ phase: 'idle', queuedAt: null });
+        setHeroCard(null);
+        heroCardKeyRef.current = null;
+    }, []);
+
+    const fireCheckin = useCallback(async () => {
+        setCheckin(s => checkinNext(s, { type: 'fire', now: Date.now() }));
+        try {
+            const r = await fetch(`${RAIJIN_API}/api/checkin`, { method: 'POST' });
+            if (!r.ok) setCheckin(s => checkinNext(s, { type: 'error' }));
+        } catch {
+            setCheckin(s => checkinNext(s, { type: 'error' }));
+        }
+    }, []);
+
+    // Un-wedge the CHECK-IN button if no answer ever lands.
+    useEffect(() => {
+        if (checkin.phase !== 'queued') return;
+        const id = setInterval(
+            () => setCheckin(s => checkinNext(s, { type: 'tick', now: Date.now() })),
+            5000,
+        );
+        return () => clearInterval(id);
+    }, [checkin.phase]);
+
     const pickRole = useCallback((r: Role | null) => {
         setRole(r);
         if (r) localStorage.setItem('raijin-role', r);
@@ -96,7 +167,7 @@ export function RaijinRecs() {
     // Poll Raijin server status
     const checkServer = useCallback(async () => {
         try {
-            const resp = await fetch(`${OFFICE_API}/api/raijin/status`);
+            const resp = await fetch(`${ctlBase}/api/raijin/status`);
             const data = await resp.json();
             if (data.ready) setServerStatus('ready');
             else if (data.running) setServerStatus('starting');
@@ -104,7 +175,7 @@ export function RaijinRecs() {
         } catch {
             setServerStatus('stopped');
         }
-    }, []);
+    }, [ctlBase]);
 
     useEffect(() => {
         checkServer();
@@ -135,6 +206,17 @@ export function RaijinRecs() {
         return () => clearInterval(id);
     }, [serverStatus, checkBotStatus]);
 
+    // Wave 2: seed the ambient-LLM toggle from the engine's settings once up.
+    useEffect(() => {
+        if (serverStatus !== 'ready') return;
+        fetch(`${RAIJIN_API}/api/settings`)
+            .then(r => (r.ok ? r.json() : null))
+            .then(d => {
+                if (d && typeof d.ambient_llm === 'boolean') setAmbientLlm(d.ambient_llm);
+            })
+            .catch(() => { /* older engine — toggle stays hidden */ });
+    }, [serverStatus]);
+
     // Auto-open the enemy picker when a hero is live but enemies are unknown.
     // Fires ONCE per game — tracked via pickerAutoOpenedRef which resets on game_ended.
     useEffect(() => {
@@ -148,24 +230,39 @@ export function RaijinRecs() {
 
     const toggleServer = useCallback(async () => {
         if (serverStatus === 'ready' || serverStatus === 'starting') {
-            await fetch(`${OFFICE_API}/api/raijin/stop`, { method: 'POST' });
+            await fetch(`${ctlBase}/api/raijin/stop`, { method: 'POST' });
             setServerStatus('stopped');
             wsRef.current?.close();
         } else {
             setServerStatus('starting');
-            await fetch(`${OFFICE_API}/api/raijin/start`, { method: 'POST' });
+            await fetch(`${ctlBase}/api/raijin/start`, { method: 'POST' });
         }
-    }, [serverStatus]);
+    }, [serverStatus, ctlBase]);
 
     /** Clear the frozen post-game board back to the idle state. */
     const dismissFrozenBoard = useCallback(() => {
         setGameEnded(false);
         setHeroData(null);
+        heroDataRef.current = null;
         setEnemyIntel(null);
         setRecommendations([]);
         setStance(null);
         setTimerRail(null);
-    }, []);
+        setGapSeries([]);
+        setEnemyIntelAt(null);
+        resetWave2State();
+    }, [resetWave2State]);
+
+    // SIGNAL LOST tracking — the console dims (never blanks) when the WS drops
+    // mid-game and stamps how long the link has been down.
+    const [signalLostAt, setSignalLostAt] = useState<number | null>(null);
+    useEffect(() => {
+        if (connStatus === 'disconnected' && heroData) {
+            setSignalLostAt(prev => prev ?? Date.now());
+        } else {
+            setSignalLostAt(null);
+        }
+    }, [connStatus, heroData]);
 
     const connect = useCallback(() => {
         if (wsRef.current?.readyState === WebSocket.OPEN || wsRef.current?.readyState === WebSocket.CONNECTING) return;
@@ -176,6 +273,12 @@ export function RaijinRecs() {
         ws.onopen = () => {
             setConnStatus('connected');
             retryRef.current = 1000;
+            // A-7: pulse-strip backfill — server ring replaces local state on
+            // every (re)connect, so reconnects never double-append.
+            fetch(`${RAIJIN_API}/api/activity`)
+                .then(r => (r.ok ? r.json() : null))
+                .then(d => { if (Array.isArray(d?.events)) setActivityFeed(d.events); })
+                .catch(() => { /* engine offline */ });
         };
 
         ws.onmessage = (event) => {
@@ -183,8 +286,65 @@ export function RaijinRecs() {
                 const update: UIUpdate = JSON.parse(event.data);
 
                 if (update.type === 'hero_status') {
-                    setGameEnded(false); // live data un-freezes a reviewed board
-                    setHeroData(update.data as unknown as HeroData);
+                    const hd = update.data as unknown as HeroData;
+                    // A-1/A-3 fix: Dota GSI keeps posting through the score
+                    // screen, so "any hero_status un-freezes" melted the freeze
+                    // instantly and the clock kept climbing on dead-game data.
+                    // Only a genuinely NEW live context un-freezes; same-match
+                    // post-game echoes are dropped whole.
+                    if (gameEndedRef.current) {
+                        const isNewMatch = !!hd.match_id && matchIdRef.current !== hd.match_id;
+                        const looksLive = typeof hd.game_phase === 'string' && (
+                            hd.game_phase.includes('PRE_GAME')
+                            || hd.game_phase.includes('HERO_SELECTION')
+                            || hd.game_phase.includes('STRATEGY_TIME')
+                            || hd.game_phase.includes('IN_PROGRESS')
+                        );
+                        if (!(isNewMatch && looksLive)) return;
+                        setGameEnded(false);
+                    }
+                    heroDataRef.current = hd;
+                    setHeroData(hd);
+                    setLastHeroAt(Date.now());
+                    // Zone 04 gap series: reset on a new match, accumulate the
+                    // gold-earned proxy per minute, mark real death events.
+                    if (hd.match_id && matchIdRef.current !== hd.match_id) {
+                        matchIdRef.current = hd.match_id;
+                        prevDeathsRef.current = hd.deaths ?? 0;
+                        setGapSeries([]);
+                        resetWave2State();
+                    }
+                    // A6.4: personal hero card — the endpoint defaults to the
+                    // live hero and 404s honestly, so no card = no chip.
+                    const cardKey = hd.match_id && hd.hero_id
+                        ? `${hd.match_id}|${hd.hero_id}` : null;
+                    if (cardKey && heroCardKeyRef.current !== cardKey) {
+                        heroCardKeyRef.current = cardKey;
+                        fetch(`${RAIJIN_API}/api/hero-card`)
+                            .then(r => (r.ok ? r.json() : null))
+                            .then(d => {
+                                if (typeof d?.games === 'number' && d.games > 0) {
+                                    setHeroCard(d as HeroCardData);
+                                }
+                            })
+                            .catch(() => { /* engine offline / no data */ });
+                    }
+                    const died = (hd.deaths ?? 0) > prevDeathsRef.current;
+                    prevDeathsRef.current = hd.deaths ?? 0;
+                    if ((hd.clock_time ?? -1) >= 0) {
+                        const min = bucketMinute(hd.clock_time);
+                        // Wave 2: true net worth when the engine sends it;
+                        // gold-earned proxy stays as the honest fallback.
+                        const nw = typeof hd.net_worth === 'number' && hd.net_worth > 0 ? hd.net_worth : null;
+                        if (nw !== null) setYouIsNetWorth(true);
+                        const you = nw ?? (hd.gpm > 0 ? goldEarnedProxy(hd.gpm, hd.game_time) : null);
+                        if (you !== null || died) {
+                            setGapSeries(s => upsertGapPoint(s, min, {
+                                ...(you !== null ? { you } : {}),
+                                death: died,
+                            }));
+                        }
+                    }
                 } else if (update.type === 'recommendations') {
                     const newRecs = (update.data as any).recommendations as Recommendation[];
                     if (newRecs?.length) {
@@ -192,9 +352,46 @@ export function RaijinRecs() {
                         // PacingController now — no title matching here.
                         const now = Date.now();
                         setRecommendations(prev => ingestRecs(prev, newRecs, now));
+                        // Wave 2: a landed CHECK-IN answer releases the button.
+                        if (newRecs.some(r => llmKind(r) === 'checkin')) {
+                            setCheckin(s => checkinNext(s, { type: 'landed' }));
+                        }
+                        // Wave 2: death recs carry ledger positions → Zone 05.
+                        for (const r of newRecs) {
+                            const mx = r.meta?.x;
+                            const my = r.meta?.y;
+                            if (r.tags?.includes('death')
+                                && typeof mx === 'number' && typeof my === 'number') {
+                                const key = `${mx}|${my}|${r.timestamp}`;
+                                if (!deathSpotKeysRef.current.has(key)) {
+                                    deathSpotKeysRef.current.add(key);
+                                    setDeathSpots(prev => [...prev, { x: mx, y: my }]);
+                                }
+                            }
+                        }
+                    }
+                } else if (update.type === 'gap_baseline') {
+                    setGapBaseline(update.data as unknown as GapBaselineData);
+                } else if (update.type === 'winnability') {
+                    const w = update.data as unknown as WinnabilityData;
+                    if (typeof w?.p_win === 'number') {
+                        setWinnability({ data: w, receivedAt: Date.now() });
                     }
                 } else if (update.type === 'enemy_intel') {
-                    setEnemyIntel(update.data as unknown as EnemyIntelData);
+                    const ei = update.data as unknown as EnemyIntelData;
+                    setEnemyIntel(ei);
+                    setEnemyIntelAt(Date.now());
+                    // Zone 04 enemy curve: the highest-NW enemy's real net worth.
+                    const team = heroDataRef.current?.my_team?.toLowerCase();
+                    const foes = (ei.players ?? []).filter(
+                        p => team && p.team && p.team.toLowerCase() !== team,
+                    );
+                    if (foes.length && (ei.game_time ?? -1) >= 0) {
+                        const top = foes.reduce((a, b) => (b.net_worth > a.net_worth ? b : a));
+                        setGapSeries(s => upsertGapPoint(s, bucketMinute(ei.game_time), {
+                            enemy: top.net_worth,
+                        }));
+                    }
                 } else if (update.type === 'stance') {
                     setStance(update.data as unknown as StanceData);
                 } else if (update.type === 'timers') {
@@ -232,19 +429,33 @@ export function RaijinRecs() {
                         enabled?: boolean;
                         muted?: boolean;
                         min_urgency?: RecUrgency;
+                        ambient_llm?: boolean;
                     };
                     if (typeof d.enabled === 'boolean') setTtsEnabled(d.enabled);
                     if (typeof d.muted === 'boolean') setTtsMuted(d.muted);
                     if (d.min_urgency) setTtsMinUrgency(d.min_urgency);
+                    if (typeof d.ambient_llm === 'boolean') setAmbientLlm(d.ambient_llm);
                 } else if (update.type === 'tts_audio') {
                     // Decode base64-encoded MP3 chunks and play via Web Audio API
                     const d = update.data as { chunks?: string[] };
                     if (d.chunks && d.chunks.length > 0) {
                         void playTTSChunks(d.chunks, audioCtxRef);
                     }
+                } else if (update.type === 'activity') {
+                    // A-7: pulse-check strip — mirror the server's 200-cap.
+                    const ev = update.data as unknown as ActivityEvent;
+                    setActivityFeed(prev => [...prev.slice(-199), ev]);
                 } else if (update.type === 'connection') {
                     const cd = update.data as any;
                     if (cd.patch_status) setPatchStatus(cd.patch_status);
+                    // :618 — /api/enemies pushes enemy_source here for an
+                    // instant badge sync; this case used to read patch only.
+                    if (cd.enemy_source) setEnemySource(cd.enemy_source);
+                    // :562 — a cap-refused check-in unwedges the button NOW,
+                    // not at the 90s timeout.
+                    if (cd.checkin === 'refused') {
+                        setCheckin(s => checkinNext(s, { type: 'error' }));
+                    }
                     // Respect a frozen review board — only blank when NOT reviewing.
                     if ('game_active' in cd && !cd.game_active && !gameEndedRef.current) {
                         setHeroData(null);
@@ -358,16 +569,112 @@ export function RaijinRecs() {
     const statusLabel = connStatus === 'connected' ? 'ONLINE'
         : connStatus === 'connecting' ? 'SYNC..' : 'OFFLINE';
 
+    const liveBoard = !!heroData;
+
+    // Compact console-header controls (live board): role letters + voice + gear.
+    // rc-audit row 39: the glyph cluster gets a visible affordance — a `?`
+    // toggle opens a legend naming every control (system chrome).
+    const ROLE_LETTER: Record<Role, string> = {
+        carry: 'C', mid: 'M', offlane: 'O', soft_support: '4', hard_support: '5',
+    };
+    const consoleControls = (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 'none', position: 'relative' }}>
+            <button
+                onClick={fireCheckin}
+                disabled={checkin.phase === 'queued'}
+                aria-label="Ask the coach for a full check-in read now"
+                title="Snapshot the game state and get a full read (timings, items, playstyle)"
+                style={{
+                    background: 'transparent', cursor: checkin.phase === 'queued' ? 'wait' : 'pointer',
+                    border: `1px solid ${checkin.phase === 'queued' ? console_.line : console_.amber}`,
+                    fontFamily: console_.mono, fontSize: 10, letterSpacing: '.16em',
+                    color: checkin.phase === 'queued' ? console_.chrome : console_.amber,
+                    padding: '3px 8px', marginRight: 6,
+                }}
+            >
+                {checkin.phase === 'queued' ? 'READING…' : 'CHECK-IN'}
+            </button>
+            {ROLES.map(r => (
+                <button
+                    key={r.id}
+                    onClick={() => pickRole(role === r.id ? null : r.id)}
+                    aria-pressed={role === r.id}
+                    title={`Coach me as ${r.label}`}
+                    style={{
+                        background: 'transparent', border: 'none', cursor: 'pointer',
+                        fontFamily: console_.mono, fontSize: 11, letterSpacing: '.08em',
+                        color: role === r.id ? console_.amber : console_.ghost,
+                        padding: '2px 3px', fontWeight: role === r.id ? 700 : 400,
+                    }}
+                >
+                    {ROLE_LETTER[r.id]}
+                </button>
+            ))}
+            {ttsEnabled && (
+                <button
+                    onClick={toggleMute}
+                    aria-label={ttsMuted ? 'Unmute voice coaching (Alt+M)' : 'Mute voice coaching (Alt+M)'}
+                    style={{
+                        background: 'transparent', border: 'none', cursor: 'pointer',
+                        fontFamily: console_.mono, fontSize: 10, letterSpacing: '.14em',
+                        color: ttsMuted ? console_.dire : console_.chrome, padding: '2px 4px',
+                    }}
+                >
+                    {ttsMuted ? 'MUTED' : 'VOICE'}
+                </button>
+            )}
+            <button
+                onClick={() => setSettingsOpen(true)}
+                aria-label="Open Raijin settings (Alt+S)"
+                style={{
+                    background: 'transparent', border: 'none', cursor: 'pointer',
+                    fontSize: 13, color: console_.chrome, padding: '2px 4px',
+                }}
+            >
+                ⚙
+            </button>
+            <button
+                onClick={() => setControlsLegendOpen(v => !v)}
+                aria-expanded={controlsLegendOpen}
+                aria-label="What do these controls do?"
+                style={{
+                    background: 'transparent', cursor: 'pointer',
+                    border: `1px solid ${controlsLegendOpen ? console_.amber : console_.line}`,
+                    fontFamily: console_.mono, fontSize: 10,
+                    color: controlsLegendOpen ? console_.amber : console_.chrome,
+                    padding: '2px 6px',
+                }}
+            >
+                ?
+            </button>
+            {controlsLegendOpen && (
+                <div
+                    role="note"
+                    style={{
+                        position: 'absolute', top: '100%', right: 0, marginTop: 8,
+                        zIndex: 40, background: console_.base2,
+                        border: `1px solid ${console_.line}`, borderRadius: 0,
+                        padding: '10px 14px', minWidth: 260,
+                        fontFamily: console_.mono, fontSize: 10.5,
+                        letterSpacing: '.08em', lineHeight: 2, color: console_.muted,
+                        whiteSpace: 'nowrap',
+                    }}
+                >
+                    <div style={{ color: console_.chrome, letterSpacing: '.22em', marginBottom: 2 }}>CONTROLS</div>
+                    <div><span style={{ color: console_.amber }}>CHECK-IN</span> — ask the coach for a full read now</div>
+                    <div><span style={{ color: console_.amber }}>C M O 4 5</span> — coach me as pos 1–5 (toggle)</div>
+                    <div><span style={{ color: console_.amber }}>VOICE</span> — mute / unmute the coach (Alt+M)</div>
+                    <div><span style={{ color: console_.amber }}>⚙</span> — settings (Alt+S)</div>
+                </div>
+            )}
+        </span>
+    );
+
     return (
         <div style={{
-            position: 'absolute', top: 0, left: SIDEBAR_W, right: 0, bottom: 0,
-            display: 'grid',
-            gridTemplateColumns: 'minmax(0, 1fr) minmax(320px, 30%)',
-            gridTemplateRows: 'auto auto auto minmax(0, 1fr) auto',
-            gap: 12,
-            padding: 14,
-            overflow: 'auto',
-            background: `radial-gradient(1200px 600px at 80% -10%, ${bcast.base2} 0%, transparent 60%), ${bcast.base}`,
+            position: 'absolute', top: 0, left: standalone ? 0 : SIDEBAR_W, right: 0, bottom: 0,
+            overflow: 'hidden',
+            background: '#050608',
             fontFamily: bcast.body,
             color: bcast.ink,
             pointerEvents: 'auto',
@@ -421,7 +728,9 @@ export function RaijinRecs() {
                 </div>
             )}
 
-            {/* Phase 1 (#11 bug d): frozen review chip — the board survived game end. */}
+            {/* Phase 1 (#11 bug d): frozen review chip — the board survived game
+                end. rc-audit row 48: system chrome — square, teal/amber, mono
+                caps; the blue rounded pill died with the ledger. */}
             {gameEnded && heroData && (
                 <div
                     role="status"
@@ -433,28 +742,31 @@ export function RaijinRecs() {
                         display: 'flex',
                         alignItems: 'center',
                         gap: 12,
-                        background: bcast.panel,
-                        border: `1px solid ${bcast.blue}`,
-                        borderRadius: bcast.rSm,
-                        color: bcast.blue,
+                        background: console_.base2,
+                        border: `1px solid ${console_.amber}`,
+                        borderRadius: 0,
+                        color: console_.amber,
                         padding: '8px 16px',
-                        fontSize: bcast.tSub,
+                        fontFamily: console_.mono,
+                        fontSize: 11,
+                        letterSpacing: '.16em',
                         fontWeight: 600,
                         zIndex: 28,
                     }}
                 >
-                    MATCH ENDED — board frozen for review
+                    MATCH ENDED — FROZEN FOR REVIEW
                     <button
                         onClick={dismissFrozenBoard}
                         aria-label="Dismiss the frozen board"
                         style={{
                             background: 'transparent',
-                            border: `1px solid ${bcast.line}`,
-                            borderRadius: 6,
-                            color: bcast.ink,
+                            border: `1px solid ${console_.line}`,
+                            borderRadius: 0,
+                            color: console_.ink,
                             padding: '3px 10px',
-                            fontFamily: bcast.body,
-                            fontSize: bcast.tLabel,
+                            fontFamily: console_.mono,
+                            fontSize: 10,
+                            letterSpacing: '.14em',
                             cursor: 'pointer',
                         }}
                     >
@@ -463,6 +775,52 @@ export function RaijinRecs() {
                 </div>
             )}
 
+            {/* A-7: pulse-check strip — fixed overlay, survives idle <-> live */}
+            <ActivityStrip events={activityFeed} />
+
+            {/* CONSOLE live board — renders whenever a hero is live or frozen for review */}
+            {liveBoard && heroData && (
+                <RaijinConsole
+                    heroData={heroData}
+                    heroCard={heroCard}
+                    recs={recs}
+                    stance={stance}
+                    timerRail={timerRail}
+                    enemyIntel={enemyIntel}
+                    enemyIntelReceivedAt={enemyIntelAt}
+                    enemySource={enemySource}
+                    onSourceClick={() => setPickerOpen(true)}
+                    role={role}
+                    gameEnded={gameEnded}
+                    endedAt={endedAtRef.current}
+                    lastHeroAt={lastHeroAt}
+                    signalLostAt={signalLostAt}
+                    bracket={bracket}
+                    patchVersion={patchStatus?.engine_version ?? null}
+                    gapSeries={gapSeries}
+                    headerControls={consoleControls}
+                    gapBaseline={gapBaseline}
+                    winnability={winnability}
+                    youIsNetWorth={youIsNetWorth}
+                    deathSpots={deathSpots}
+                    postGameReport={postGameReport}
+                />
+            )}
+
+            {/* Idle screen (queue time / engine down): full controls + briefing room */}
+            {!liveBoard && (
+            <div style={{
+                position: 'absolute', inset: 0,
+                display: 'grid',
+                gridTemplateColumns: 'minmax(0, 1fr)',
+                gridTemplateRows: 'minmax(0, 1fr)',
+                alignItems: 'start',
+                gap: 12,
+                padding: 14,
+                paddingTop: 64,
+                overflow: 'auto',
+                background: `radial-gradient(1200px 600px at 80% -10%, ${bcast.base2} 0%, transparent 60%), ${bcast.base}`,
+            }}>
             {/* Header controls: role selector + reports + engine controls */}
             <div style={{
                 position: 'absolute', top: 14, right: 16, zIndex: 20,
@@ -553,58 +911,37 @@ export function RaijinRecs() {
                 </span>
             </div>
 
-            {/* Row 1 (span): score/intel strip */}
-            <div style={{ gridColumn: '1 / -1', display: 'grid' }}>
-                <RaijinTeamIntel
-                    enemyIntel={enemyIntel}
-                    heroData={heroData}
-                    enemySource={enemySource}
-                    onSourceClick={() => setPickerOpen(true)}
-                />
-            </div>
-
-            {/* Phase 1 (#8): queue-time briefing — replaces the dead pre-game wall */}
+            {/* Phase 1 (#8): queue-time briefing — the idle screen's main surface */}
             <RaijinBriefingRoom
-                visible={serverStatus === 'ready' && !heroData && !gameEnded}
+                visible={serverStatus === 'ready' && !gameEnded}
                 onOpenScouting={() => setScoutingOpen(true)}
+                myTeam={heroDataRef.current?.my_team ?? null}
             />
-
-            {/* Row 2 col 1: THE priority action (centerpiece) */}
-            <div style={{ gridColumn: 1, display: 'grid' }}>
-                <RaijinActionBar
-                    recommendations={recs}
-                    heroData={gameEnded ? null : heroData}
-                    role={role}
-                    ttsEnabled={ttsEnabled}
-                    ttsMuted={ttsMuted}
-                    onToggleMute={toggleMute}
-                />
+            {serverStatus !== 'ready' && (
+                <div style={{
+                    alignSelf: 'center', justifySelf: 'center', textAlign: 'center',
+                    fontFamily: console_.mono, fontSize: 12, letterSpacing: '.2em',
+                    color: console_.chrome, lineHeight: 2,
+                }}>
+                    RAIJIN CONSOLE
+                    <br />
+                    <span style={{ color: console_.ghost }}>
+                        {serverStatus === 'starting' ? 'ENGINE STARTING…' : 'ENGINE OFFLINE — START ENGINE TO BEGIN'}
+                    </span>
+                </div>
+            )}
             </div>
-
-            {/* Right rail (rows 2-4): stance + WHY-first feed */}
-            <div style={{
-                gridColumn: 2, gridRow: '2 / 6',
-                display: 'flex', flexDirection: 'column', gap: 12, minHeight: 0,
-            }}>
-                <RaijinStanceBanner stance={heroData && !gameEnded ? stance : null} />
-                <RaijinStrategy recommendations={recs} />
-            </div>
-
-            {/* Row 3 col 1: hero panel */}
-            <div style={{ gridColumn: 1, display: 'grid' }}>
-                <RaijinHeroDisplay heroData={heroData} recommendations={recs} />
-            </div>
-
-            {/* Row 4 col 1: timers (hidden on a frozen board — countdowns are dead) */}
-            <div style={{ gridColumn: 1, display: 'grid', alignContent: 'start' }}>
-                <RaijinTimerRail
-                    rail={heroData && timerRail && !gameEnded ? timerRail.data : null}
-                    receivedAt={timerRail?.receivedAt ?? null}
-                />
-            </div>
+            )}
 
             {/* Death-timer coaching panel — never over a frozen review board */}
-            {!gameEnded && <RaijinDeathPanel heroData={heroData} recommendations={recs} />}
+            {!gameEnded && (
+                <RaijinDeathPanel
+                    heroData={heroData}
+                    recommendations={recs}
+                    onCheckin={fireCheckin}
+                    checkinQueued={checkin.phase === 'queued'}
+                />
+            )}
 
             {/* Enemy picker modal — manually or auto-triggered */}
             <RaijinEnemyPicker
@@ -650,6 +987,17 @@ export function RaijinRecs() {
                 enabled={ttsEnabled}
                 muted={ttsMuted}
                 minUrgency={ttsMinUrgency}
+                ambientLlm={ambientLlm}
+                onAmbientToggle={async next => {
+                    try {
+                        await fetch(`${RAIJIN_API}/api/settings/ambient`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ enabled: next }),
+                        });
+                        setAmbientLlm(next); // optimistic — broadcast reconciles
+                    } catch { /* engine offline — broadcast reconciles later */ }
+                }}
                 onApply={async partial => {
                     try {
                         await fetch(`${RAIJIN_API}/api/settings/tts`, {

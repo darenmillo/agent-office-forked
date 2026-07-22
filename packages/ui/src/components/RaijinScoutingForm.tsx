@@ -175,12 +175,16 @@ export function RaijinScoutingForm({ open, onClose, onConfirm }: Props) {
         setError(null);
 
         // Build the API payload: drop empty rows; canonicalize hero names.
+        // B1 (2026-07-09): role is OPTIONAL — pre-game you know the heroes,
+        // rarely their roles. The old `&& r.role` filter silently discarded
+        // every hero-only row, so scouted enemies never reached the engine
+        // and the picker re-opened (the do-it-twice bug).
         const cleanAllies = state.allies
-            .filter(r => r.hero.trim() && r.role)
-            .map(r => ({ hero: canonicalize(r.hero), role: r.role as Role }));
+            .filter(r => r.hero.trim())
+            .map(r => ({ hero: canonicalize(r.hero), ...(r.role ? { role: r.role as Role } : {}) }));
         const cleanEnemies = state.enemies
-            .filter(r => r.hero.trim() && r.role)
-            .map(r => ({ hero: canonicalize(r.hero), role: r.role as Role }));
+            .filter(r => r.hero.trim())
+            .map(r => ({ hero: canonicalize(r.hero), ...(r.role ? { role: r.role as Role } : {}) }));
 
         const payload: Record<string, unknown> = {};
         if (state.my_hero.trim()) payload.my_hero = canonicalize(state.my_hero);

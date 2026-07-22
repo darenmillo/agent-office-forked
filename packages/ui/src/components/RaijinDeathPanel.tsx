@@ -9,16 +9,28 @@
  * Data scope unchanged (per audit): GSI provides respawn/gold; the analysis
  * arrives as a death-tagged rec via the normal recommendations stream.
  */
-import React, { useMemo, useState, useEffect } from 'react';
-import { HeroData, Recommendation, effectiveUrgency } from '../raijinTypes';
-import { bcast, bLabel, bNum } from '../raijinTheme';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { HeroData, Recommendation } from '../raijinTypes';
+import { bcast, bLabel, bNum, console_ } from '../raijinTheme';
+import { verdictBadge } from '../console';
+import { pruneQueued } from '../pacing';
+
+const VERDICT_COLOR = {
+    radiant: bcast.radiant,
+    blue: bcast.blue,
+    amber: console_.amber,
+    dire: bcast.dire,
+} as const;
 
 interface Props {
     heroData: HeroData | null;
     recommendations: Recommendation[];
+    /** Wave 2: dead time is CHECK-IN time — fires the full-read request. */
+    onCheckin?: () => void;
+    checkinQueued?: boolean;
 }
 
-export function RaijinDeathPanel({ heroData, recommendations }: Props) {
+export function RaijinDeathPanel({ heroData, recommendations, onCheckin, checkinQueued }: Props) {
     // Find the Sonnet "coach says" rec separately from the sync _on_death
     // bundle so it renders as the hero line and persists past respawn.
     const { headline, extras, coachSays } = useMemo(() => {
@@ -32,12 +44,9 @@ export function RaijinDeathPanel({ heroData, recommendations }: Props) {
         const headlineRec = sorted.find(
             r => !(r.tags?.includes('llm') && r.tags?.includes('analysis')),
         ) ?? null;
-        const now = Date.now();
-        const recentFlushed = recommendations
-            .filter(r => !r.tags?.includes('death'))
-            .filter(r => now - (r.receivedAt ?? now) < 10_000)
-            .filter(r => effectiveUrgency(r) !== 'CRITICAL')
-            .slice(0, 4);
+        // rc-audit row 25: age-out (>2min), dedupe by key, cap 3 — a min-5
+        // item never haunts a min-26 death.
+        const recentFlushed = pruneQueued(recommendations, Date.now());
         return { headline: headlineRec, extras: recentFlushed, coachSays: analysis };
     }, [recommendations]);
 
@@ -54,21 +63,35 @@ export function RaijinDeathPanel({ heroData, recommendations }: Props) {
     const dismissed = coachSays != null
         && dismissedCoachSaysId === (coachSays.receivedAt ?? 0);
 
+    // rc-audit row 27: depletion needs the death's FULL respawn as the scale —
+    // track the max seen for this death, reset on respawn.
+    const maxRespawnRef = useRef(0);
+    if (!heroData || heroData.alive) {
+        maxRespawnRef.current = 0;
+    } else if ((heroData.respawn_seconds ?? 0) > maxRespawnRef.current) {
+        maxRespawnRef.current = heroData.respawn_seconds ?? 0;
+    }
+
     if (!heroData) return null;
     if (alive && (!coachSaysFresh || dismissed)) return null;
 
     const gold = heroData.gold ?? 0;
     const respawn = heroData.respawn_seconds ?? 0;
+    const respawnPct = maxRespawnRef.current > 0
+        ? Math.max(0, Math.min(100, (respawn / maxRespawnRef.current) * 100))
+        : 0;
 
     return (
         <>
             <style>{`
                 @keyframes raijin-death-rise {
-                    from { opacity: 0; transform: translate(-50%, 10px); }
-                    to { opacity: 1; transform: translate(-50%, 0); }
+                    from { opacity: 0; transform: translateY(10px); }
+                    to { opacity: 1; transform: translateY(0); }
                 }
+                .raijin-death-depletion { transition: width 1s linear; }
                 @media (prefers-reduced-motion: reduce) {
                     .raijin-death-moment { animation: none !important; }
+                    .raijin-death-depletion { transition: none !important; }
                 }
             `}</style>
             <section
@@ -93,11 +116,13 @@ export function RaijinDeathPanel({ heroData, recommendations }: Props) {
                             zIndex: 15,
                             boxShadow: '0 12px 40px rgba(0,0,0,.45)',
                         }
+                        // rc-audit row 26: docked over the right rail (Zone07
+                        // area) — chart + stance stay visible during the one
+                        // readable moment. Above the tape at every width.
                         : {
                             position: 'absolute',
-                            top: 110,
-                            left: '50%',
-                            transform: 'translateX(-50%)',
+                            right: 24,
+                            bottom: 190,
                             width: 'min(560px, 44vw)',
                             padding: '18px 20px',
                             background: `radial-gradient(400px 160px at 12% 0%, rgba(255,89,100,.12), transparent 70%), ${bcast.panel}`,
@@ -116,6 +141,21 @@ export function RaijinDeathPanel({ heroData, recommendations }: Props) {
                     <>
                         {/* Respawn numeral + gold — the two numbers that matter while dead */}
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: 20 }}>
+                            {(() => {
+                                const badge = verdictBadge(headline?.meta?.verdict as string);
+                                return badge ? (
+                                    <span style={{
+                                        position: 'absolute', top: 14, right: 16,
+                                        fontSize: 10, letterSpacing: '.2em',
+                                        fontFamily: console_.mono,
+                                        color: VERDICT_COLOR[badge.tone],
+                                        border: `1px solid ${VERDICT_COLOR[badge.tone]}55`,
+                                        padding: '2px 7px',
+                                    }}>
+                                        {badge.label}
+                                    </span>
+                                ) : null;
+                            })()}
                             <div>
                                 <div style={{ ...bLabel, color: bcast.dire }}>Respawn</div>
                                 <div style={{
@@ -127,6 +167,13 @@ export function RaijinDeathPanel({ heroData, recommendations }: Props) {
                                     color: bcast.dire,
                                 }}>
                                     {respawn}s
+                                </div>
+                                {/* rc-audit row 27: the countdown depletes visibly */}
+                                <div style={{ height: 3, background: bcast.line, marginTop: 6 }}>
+                                    <div
+                                        className="raijin-death-depletion"
+                                        style={{ height: '100%', width: `${respawnPct}%`, background: bcast.dire }}
+                                    />
                                 </div>
                             </div>
                             <div>
@@ -179,6 +226,26 @@ export function RaijinDeathPanel({ heroData, recommendations }: Props) {
                                     </div>
                                 ))}
                             </div>
+                        )}
+
+                        {/* Dead time is reading time — the full check-in read is one tap away. */}
+                        {onCheckin && respawn >= 15 && (
+                            <button
+                                onClick={onCheckin}
+                                disabled={checkinQueued}
+                                style={{
+                                    marginTop: 12,
+                                    background: 'transparent',
+                                    border: `1px solid ${checkinQueued ? bcast.line : console_.phos}`,
+                                    color: checkinQueued ? bcast.muted : console_.phosInk,
+                                    fontFamily: console_.mono,
+                                    fontSize: 11, letterSpacing: '.18em',
+                                    padding: '6px 12px',
+                                    cursor: checkinQueued ? 'wait' : 'pointer',
+                                }}
+                            >
+                                {checkinQueued ? 'READING…' : 'CHECK-IN — WHAT NOW?'}
+                            </button>
                         )}
                     </>
                 ) : (
