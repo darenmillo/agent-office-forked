@@ -181,3 +181,55 @@ describe('uilogic-5 — boardState hysteresis at the laning boundary', () => {
         expect(boardState({ clock: 719, alive: true, gameEnded: true }, 'LANING').state).toBe('POSTGAME');
     });
 });
+
+// ── probe-1340: the NEXT card must survive the ITEM budget ──────────────────
+// Real population dumped from the replay feed at clock 1340 (07-23). Order
+// matters: the TP nag lands FIRST (its last cooldown emission), then the
+// build cards, then fresh completions/nags. The slotted NEXT is the OLDEST
+// p3 tie (keep-alive re-emits up to 614s back) — recency tie-breaks + budget
+// 6 cut the build path out of its own panel while the TP nag squats the
+// next position via positional fallback (screenshot-verified twice).
+import { ingestRecs, visibleRecs } from './pacing';
+import { selectBuildSlots } from './console';
+
+describe('probe-1340: slotted build cards are exempt from the ITEM budget', () => {
+    const mk = (over: Partial<Recommendation>, at: number): Recommendation =>
+        rec({ category: 'ITEM', receivedAt: T0 + at, ...over });
+
+    function shotFlowStore(): Recommendation[] {
+        const batches: Recommendation[][] = [
+            [mk({ title: 'BUY TP SCROLL', priority: 5, urgency: 'CRITICAL',
+                  meta: { item: 'tpscroll' } }, 0)],
+            [mk({ title: 'Next item: Vanguard', priority: 3, tags: ['build', 'intel'],
+                  meta: { item: 'vanguard', build_slot: 'next' } }, 10_000)],
+            [mk({ title: 'Blade Mail complete at 16.0 min', priority: 4, tags: ['intel', 'spike'] }, 20_000)],
+            [mk({ title: 'After: Great Healing Lotus', priority: 3, tags: ['build', 'intel'],
+                  meta: { item: 'great_famango', build_slot: 'after' } }, 30_000)],
+            [mk({ title: 'Black King Bar pivot — 5 enemy lockdown abilities', priority: 3,
+                  urgency: 'IMPORTANT', tags: ['situational', 'intel', 'build'],
+                  meta: { item: 'black_king_bar', build_slot: 'pivot' } }, 40_000)],
+            [mk({ title: 'Blink Dagger complete at 22.0 min', priority: 3, tags: ['intel', 'spike'] }, 50_000)],
+            [mk({ title: 'Carry Dust of Appearance!', priority: 4 }, 60_000)],
+            [mk({ title: 'Consider Crimson Guard', priority: 3 }, 70_000)],
+        ];
+        let store: Recommendation[] = [];
+        for (const b of batches) store = ingestRecs(store, b, b[0].receivedAt!);
+        return store;
+    }
+
+    it('NEXT and AFTER survive nag pressure and reach their slots', () => {
+        const visible = visibleRecs(shotFlowStore(), T0 + 85_000, null);
+        const items = visible.filter(r => r.category === 'ITEM');
+        const slots = selectBuildSlots(items);
+        expect(slots.next?.title).toBe('Next item: Vanguard');
+        expect(slots.after?.title).toBe('After: Great Healing Lotus');
+    });
+
+    it('slotless ITEM recs still respect the budget', () => {
+        const visible = visibleRecs(shotFlowStore(), T0 + 85_000, null);
+        const slotless = visible.filter(
+            r => r.category === 'ITEM' && r.meta?.build_slot === undefined,
+        );
+        expect(slotless.length).toBeLessThanOrEqual(6);
+    });
+});

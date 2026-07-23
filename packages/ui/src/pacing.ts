@@ -158,6 +158,13 @@ export function visibleRecs(
         (a, b) => score(b, role) - score(a, role) || (b.receivedAt ?? 0) - (a.receivedAt ?? 0),
     );
     return ordered.filter(r => {
+        // probe-1340 (07-23): slot-keyed build cards are Zone 06's dedicated
+        // feed with engine-bounded cardinality (one next, one after, same-slot
+        // eviction) — they never compete against the slotless stream for the
+        // ITEM budget. Without this, the NEXT card is always the oldest p3
+        // recency tie and nag pressure cuts the build path out of its own
+        // panel (the TP nag then squats the slot via positional fallback).
+        if (itemSlot(r) !== undefined) return true;
         const n = (byCat.get(r.category) ?? 0) + 1;
         byCat.set(r.category, n);
         return n <= (CATEGORY_BUDGET[r.category] ?? 3);
