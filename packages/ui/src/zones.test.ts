@@ -82,10 +82,15 @@ describe('directive dedupe (rows 13/14)', () => {
         expect(filterDirectiveOwned([a], null)).toEqual([a]);
         expect(filterDirectiveOwned([a], undefined)).toEqual([a]);
     });
-    it('mergeNextEcho fires only when the flag is up AND a next card exists', () => {
-        expect(mergeNextEcho(true, true)).toBe(true);
-        expect(mergeNextEcho(true, false)).toBe(false);
-        expect(mergeNextEcho(false, true)).toBe(false);
+    // 07-23 hunt uilogic-2 contract change: the merge requires the directive
+    // key to BE the NEXT rec — the old gold-target flag produced false
+    // "IN DIRECTIVE" claims for any costed pickup owning Zone01.
+    it('mergeNextEcho fires only when the directive IS the NEXT rec', () => {
+        const next = rec({ category: 'ITEM', title: 'Next item: Vanguard' });
+        expect(mergeNextEcho('ITEM|Next item: Vanguard', next)).toBe(true);
+        expect(mergeNextEcho('ITEM|Buy BKB now', next)).toBe(false);
+        expect(mergeNextEcho(null, next)).toBe(false);
+        expect(mergeNextEcho('ITEM|Next item: Vanguard', null)).toBe(false);
     });
 });
 

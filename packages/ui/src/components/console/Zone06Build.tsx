@@ -103,23 +103,23 @@ interface Props {
     clock: number | null;
     nowMs: number;
     /** rc-audit row 13: `category|title` key the Zone01 directive owns —
-     *  recs it owns render there, not here. */
+     *  recs it owns render there, not here. Row 14 also keys off it: the
+     *  NEXT echo merges only when the directive IS the NEXT rec (07-23 hunt
+     *  uilogic-2 — the old gold-target flag produced false IN DIRECTIVE
+     *  claims whenever any costed pickup/pivot owned Zone01). */
     directiveKey?: string | null;
-    /** rc-audit row 14: the directive IS the gold-target item — drop the
-     *  identical echo; AFTER takes the lead card. */
-    directiveIsGoldTarget?: boolean;
 }
 
 export function Zone06Build({
     itemRecs, gold, goldTarget, intelReceivedAt, clock, nowMs,
-    directiveKey = null, directiveIsGoldTarget = false,
+    directiveKey = null,
 }: Props) {
     // B5: engine-declared meta.build_slot wins; positional fallback when absent.
     const { next, after, pivots: rawPivots } = selectBuildSlots(itemRecs);
     const pivots = filterDirectiveOwned(rawPivots, directiveKey);
     const nextSpecies = cardSpecies(next);
     const afterSpecies = cardSpecies(after);
-    const merged = mergeNextEcho(directiveIsGoldTarget, !!next && nextSpecies === 'build');
+    const merged = mergeNextEcho(directiveKey, nextSpecies === 'build' ? next : null);
     const intelClock = intelReceivedAt !== null && clock !== null
         ? Math.max(0, clock - (nowMs - intelReceivedAt) / 1000)
         : null;

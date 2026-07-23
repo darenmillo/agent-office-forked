@@ -473,10 +473,19 @@ export function filterDirectiveOwned<T extends Recommendation>(
     return recs.filter(r => `${r.category}|${r.title}` !== directiveKey);
 }
 
-/** Row 14 — when the directive IS the gold target, Zone06 swaps the NEXT
- *  echo for AFTER + pivot preview; NEXT collapses to a slim reference. */
-export function mergeNextEcho(directiveIsGold: boolean, hasBuildNext: boolean): boolean {
-    return directiveIsGold && hasBuildNext;
+/** Row 14 — when the directive IS the NEXT-slot rec itself, Zone06 swaps
+ *  the NEXT echo for AFTER + pivot preview; NEXT collapses to a slim
+ *  "IN DIRECTIVE" reference. 07-23 hunt uilogic-2: the old predicate keyed
+ *  on the GOLD TARGET, which any higher-priority costed ITEM rec (a BKB
+ *  pickup, a pivot) can own — printing a false "NEXT ▸ X — IN DIRECTIVE"
+ *  while the NEXT item was nowhere near the directive. The merge now
+ *  requires the directive's key to BE the NEXT rec's key. */
+export function mergeNextEcho(
+    directiveKey: string | null,
+    next: Recommendation | null,
+): boolean {
+    return !!directiveKey && !!next
+        && directiveKey === `${next.category}|${next.title}`;
 }
 
 // ── row 28: log decay ───────────────────────────────────────────────────

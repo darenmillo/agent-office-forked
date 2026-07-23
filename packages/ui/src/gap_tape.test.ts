@@ -235,7 +235,11 @@ describe('layoutTapeLabels (row 21 — deterministic collision layout)', () => {
         const placed = layoutTapeLabels([ev('spike-ck-yasha', 'CHAOS KNIGHT YASHA', 'dire', 172)]);
         const p = placed[0];
         expect(p.labelPct + tapeLabelWidthPct(p.label)).toBeLessThanOrEqual(100);
-        expect(p.leader).toBe(false); // clamped left of its tick — anchored, not led
+        // 07-23 hunt uilogic-3 contract change: a clamped label is displaced
+        // from its tick, so it DRAWS a leader back to it — an unled displaced
+        // label reads as belonging to the wrong moment (the superimposition
+        // confusion the lane sweep fixes).
+        expect(p.leader).toBe(Math.abs(p.labelPct - p.tickPct) > 0.5);
         expect(p.tickPct).toBeCloseTo((172 / 180) * 100, 1);
     });
 

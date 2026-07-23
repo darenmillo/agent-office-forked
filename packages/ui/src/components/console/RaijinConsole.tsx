@@ -20,14 +20,14 @@ import { HeroCardData,
     HeroData, PostGameReport, Recommendation, StanceData, TimerRailData,
     EnemyIntelData, EnemySource, GapBaselineData, WinnabilityData,
 } from '../../raijinTypes';
-import { pickPriorityAction, directiveOwnedKey, Role } from '../../pacing';
+import { pickPriorityAction, directiveOwnedKey, DwellTracker, Role } from '../../pacing';
 import {
     GapPoint, extractGoldTarget, goldEtaSeconds, extrapolatedClock,
-    deriveTapeEvents, roshTapeState, directiveIsGoldTarget, llmKind,
+    deriveTapeEvents, roshTapeState, llmKind,
     winnabilityTone, fmtPct,
 } from '../../console';
 import { isTapeCompressed } from '../../gapTape';
-import { boardState, responsiveMode, rankOpacity } from '../../director';
+import { boardState, responsiveMode, rankOpacity, BoardState } from '../../director';
 import { ConsoleKeyframes } from './shared';
 import { ConsoleHeader } from './ConsoleHeader';
 import { Zone01Directive } from './Zone01Directive';
@@ -72,6 +72,8 @@ interface Props {
     bracket: string | null;
     patchVersion: string | null;
     gapSeries: GapPoint[];
+    /** 07-23 hunt: match-scoped dwell tracker owned by RaijinRecs. */
+    dwell?: DwellTracker;
     headerControls?: React.ReactNode;
     // Wave 2 feeds — all render-if-present.
     gapBaseline: GapBaselineData | null;
@@ -126,7 +128,7 @@ export function RaijinConsole({
     heroData,
     heroCard = null, recs, stance, timerRail, enemyIntel, enemyIntelReceivedAt,
     enemySource, onSourceClick, role, gameEnded, endedAt, lastHeroAt,
-    signalLostAt, bracket, patchVersion, gapSeries, headerControls,
+    signalLostAt, bracket, patchVersion, gapSeries, dwell, headerControls,
     gapBaseline, winnability, youIsNetWorth, deathSpots,
     postGameReport = null,
 }: Props) {
@@ -164,8 +166,12 @@ export function RaijinConsole({
             ? extrapolatedClock(heroData.clock_time, lastHeroAt, nowMs)
             : heroData.clock_time ?? null;
 
-    // THE DIRECTOR — pure GSI in, board state + zone ranks out.
-    const dv = boardState({ clock, alive: heroData.alive !== false, gameEnded });
+    // THE DIRECTOR — pure GSI in, board state + zone ranks out. 07-23 hunt
+    // uilogic-5: the previous state feeds the laning-boundary hysteresis so
+    // pause-regressed clocks can't flap the grid at minute 12.
+    const prevBoardStateRef = useRef<BoardState | null>(null);
+    const dv = boardState({ clock, alive: heroData.alive !== false, gameEnded }, prevBoardStateRef.current);
+    prevBoardStateRef.current = dv.state;
     const postgame = dv.state === 'POSTGAME';
 
     // Derived: directive pick, gold target, tape events.
@@ -188,7 +194,6 @@ export function RaijinConsole({
     const logRecs = action ? recs.filter(r => r !== action) : recs;
     const itemRecs = recs.filter(r => r.category === 'ITEM');
     const directiveKey = directiveOwnedKey(action);
-    const directiveHasGold = directiveIsGoldTarget(action, goldTarget);
     const closingRec = postgame ? recs.find(r => llmKind(r) === 'closing') ?? null : null;
 
     // Header meta.
@@ -258,6 +263,7 @@ export function RaijinConsole({
             goldTarget={goldTarget}
             clock={clock}
             nowMs={nowMs}
+            dwell={dwell}
         />
     );
     const zone02Node = postgame ? (
@@ -320,7 +326,6 @@ export function RaijinConsole({
                         clock={clock}
                         nowMs={nowMs}
                         directiveKey={directiveKey}
-                        directiveIsGoldTarget={directiveHasGold}
                     />
                     <ThreatRail
                         enemyIntel={enemyIntel}
@@ -436,8 +441,7 @@ export function RaijinConsole({
                                         clock={clock}
                                         nowMs={nowMs}
                                         directiveKey={directiveKey}
-                                        directiveIsGoldTarget={directiveHasGold}
-                                    />
+                                                    />
                                 </div>
                                 {!compact && (
                                     <div className="rc-cut" style={dimStyle('z07')}>

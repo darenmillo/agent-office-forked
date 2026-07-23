@@ -194,10 +194,16 @@ export function pickPriorityAction(
     // render on the PHOSPHOR card / log rows / death panel instead.
     // rc-audit row 07: event announcements ('event' tag) are log/tape
     // material, never an imperative — excluded here too.
+    // 07-23 hunt redstack-03: no-tts recs are silent same-key CARD UPDATES
+    // (live-number refreshes, demote-on-resolve releases) — they keep an
+    // existing card honest but are never themselves a directive. Without
+    // this, the release card re-claimed the 52px slot with its imperative
+    // title right after the lock released.
     const fresh = all.filter(
         r => now - (r.receivedAt ?? now) < WINDOW
             && !(r.tags ?? []).includes('llm')
             && !(r.tags ?? []).includes('event')
+            && !(r.tags ?? []).includes('no-tts')
             && !opposesStance(r, stance),
     );
     if (!fresh.length) return null;
@@ -219,19 +225,69 @@ const DWELL_KEEP = 24; // bounded memory — a game emits few distinct CRITICALs
 
 export class DwellTracker {
     private onsets = new Map<string, number>();
+    private demoted = new Set<string>();
+    private pausedAt: number | null = null;
+
+    /** 07-23 hunt redstack-01: ingest-side bookkeeping. A key seen at
+     *  non-CRITICAL urgency (the engine's demote-on-resolve release/refresh
+     *  cards) is marked; the NEXT CRITICAL for that key is a genuinely new
+     *  arming and re-arms red. Same-key CRITICAL re-fires with no demote
+     *  between them never reset — the anti-wallpaper law holds. */
+    observe(r: Recommendation): void {
+        const key = recKey(r);
+        if (effectiveUrgency(r) === 'CRITICAL') {
+            if (this.demoted.delete(key)) this.onsets.delete(key);
+        } else if (this.onsets.has(key)) {
+            this.demoted.add(key);
+        }
+    }
+
+    /** 07-23 hunt redstack-02: while the death panel owns the board the
+     *  directive is a dim echo — visible red must not burn through the
+     *  respawn. Pause shifts every onset forward by the paused span. */
+    pause(nowMs: number): void {
+        if (this.pausedAt === null) this.pausedAt = nowMs;
+    }
+
+    resume(nowMs: number): void {
+        if (this.pausedAt === null) return;
+        const delta = nowMs - this.pausedAt;
+        this.pausedAt = null;
+        if (delta > 0) {
+            for (const [k, v] of this.onsets) this.onsets.set(k, v + delta);
+        }
+    }
+
+    /** Game-2 carryover family (reset-2/-3, redstack-05): a new match kills
+     *  every onset — game 2's first alarm is a fresh alarm. */
+    reset(): void {
+        this.onsets.clear();
+        this.demoted.clear();
+        this.pausedAt = null;
+    }
+
+    /** Adjusted onset age for the takeover-freshness window (redstack-02:
+     *  receivedAt burns through a death; this does not). Null = never lit. */
+    onsetAge(key: string | null, nowMs: number): number | null {
+        if (!key) return null;
+        const onset = this.onsets.get(key);
+        if (onset === undefined) return null;
+        return (this.pausedAt ?? nowMs) - onset;
+    }
 
     state(key: string | null, nowMs: number): 'red' | 'amber' | null {
         if (!key) return null;
+        const effNow = this.pausedAt ?? nowMs;
         let onset = this.onsets.get(key);
         if (onset === undefined) {
-            onset = nowMs;
+            onset = effNow;
             this.onsets.set(key, onset);
             if (this.onsets.size > DWELL_KEEP) {
                 const first = this.onsets.keys().next().value;
                 if (first !== undefined) this.onsets.delete(first);
             }
         }
-        return nowMs - onset < RED_DWELL_MS ? 'red' : 'amber';
+        return effNow - onset < RED_DWELL_MS ? 'red' : 'amber';
     }
 }
 

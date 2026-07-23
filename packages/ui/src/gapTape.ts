@@ -261,9 +261,7 @@ export function layoutTapeLabels(
 
         let labelPct = tick;
         if (!fits(lane)) labelPct = laneEnd[lane] + LANE_MIN_GAP_PCT;
-        // Right-edge clamp (the old translateX right-anchor, made layout-aware):
-        // a label never overflows the tape; clamping left of the tick is the
-        // anchored case and draws no leader.
+        // Right-edge clamp: a label never overflows the tape.
         labelPct = Math.max(0, Math.min(labelPct, 100 - width));
         const leader = labelPct - tick > 0.5;
         laneEnd[lane] = labelPct + width;
@@ -280,6 +278,29 @@ export function layoutTapeLabels(
             secondsUntil: e.secondsUntil,
         });
     });
+
+    // 07-23 hunt uilogic-3: the right-edge clamp can pull a crowd-shifted
+    // label BACK LEFT over an already-placed same-lane label (two labels
+    // superimposed in the last seconds of the horizon — the exact crowded
+    // moment the layout exists for). Final right-to-left pass per lane
+    // restores the min-gap invariant by shifting earlier labels LEFT (the
+    // right edge is a hard wall), then re-derives leaders for ANY displaced
+    // label — a left-anchored label needs its tick leader too.
+    for (const laneName of ['above', 'below'] as const) {
+        const inLane = placements
+            .filter(p => p.lane === laneName)
+            .sort((a, b) => a.labelPct - b.labelPct);
+        for (let i = inLane.length - 2; i >= 0; i--) {
+            const right = inLane[i + 1];
+            const cur = inLane[i];
+            const curWidth = tapeLabelWidthPct(cur.label);
+            const maxStart = right.labelPct - LANE_MIN_GAP_PCT - curWidth;
+            if (cur.labelPct > maxStart) cur.labelPct = Math.max(0, maxStart);
+        }
+    }
+    for (const p of placements) {
+        p.leader = Math.abs(p.labelPct - p.tickPct) > 0.5;
+    }
     return placements;
 }
 

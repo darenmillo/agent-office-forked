@@ -5,7 +5,7 @@
  *  CRITICAL takeover (Round-2 B/CUT language): a fresh CRITICAL directive
  *  gets the red top rule + mono CRITICAL strip + oversized directive. One
  *  alarm at a time — this zone is the only place the board goes red. */
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { console_ } from '../../raijinTheme';
 import { HeroData, Recommendation, effectiveUrgency } from '../../raijinTypes';
 import { GoldTarget, goldEtaSeconds, fmtMSS } from '../../console';
@@ -23,21 +23,37 @@ interface Props {
     goldTarget: GoldTarget | null;
     clock: number | null;
     nowMs: number;
+    /** 07-23 hunt: the match-scoped tracker owned by RaijinRecs (observes
+     *  every incoming rec for the re-arm law; reset on a new match). The
+     *  local ref remains as a fallback for bare renders/tests. */
+    dwell?: DwellTracker;
 }
 
-export function Zone01Directive({ action, heroData, goldTarget, clock, nowMs }: Props) {
+export function Zone01Directive({ action, heroData, goldTarget, clock, nowMs, dwell: dwellProp }: Props) {
     const urgency = action ? effectiveUrgency(action) : 'ROUTINE';
     // rc-audit row 02: red is budgeted. A CRITICAL key holds true red for 90s
-    // from onset, then decays to the amber CRITICAL treatment; only a NEW
-    // alarm (new key) re-arms red. Kills the 36-minute wallpaper.
+    // from onset, then decays to the amber CRITICAL treatment; a NEW arming
+    // (demote seen between CRITICALs) re-arms red. Kills the 36-min wallpaper.
     const dwellRef = useRef(new DwellTracker());
+    const tracker = dwellProp ?? dwellRef.current;
+    const dead = !heroData.alive;
+    // 07-23 hunt redstack-02: while the death panel owns the board this zone
+    // is a dim echo — the red budget and takeover window must not burn
+    // through the respawn. Pause the tracker for the dead span.
+    useEffect(() => {
+        if (dead) tracker.pause(Date.now());
+        else tracker.resume(Date.now());
+    }, [dead, tracker]);
     const rawCritical = urgency === 'CRITICAL';
-    const dwell = rawCritical && action ? dwellRef.current.state(recKey(action), nowMs) : null;
+    const dwell = rawCritical && action ? tracker.state(recKey(action), nowMs) : null;
     const critical = rawCritical && dwell === 'red';
     const criticalDecayed = rawCritical && dwell === 'amber';
-    const dead = !heroData.alive;
-    const cutTakeover = !dead && critical && !!action
-        && nowMs - (action.receivedAt ?? 0) < CUT_FRESH_MS;
+    // Takeover freshness rides the tracker's ADJUSTED onset (receivedAt
+    // burns through a death; the paused onset does not) — an alarm that
+    // armed while dead still gets its takeover when the board returns.
+    const onsetAgeMs = rawCritical && action ? tracker.onsetAge(recKey(action), nowMs) : null;
+    const cutTakeover = !dead && critical
+        && onsetAgeMs !== null && onsetAgeMs < CUT_FRESH_MS;
     const stale = directiveIsStale(action, nowMs); // row 03 belt
     const gold = heroData.gold;
     const targetReached = !!goldTarget && gold >= goldTarget.cost;

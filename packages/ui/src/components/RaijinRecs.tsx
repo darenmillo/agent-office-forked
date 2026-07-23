@@ -12,7 +12,7 @@ import {
     RAIJIN_WS,
 } from '../raijinTypes';
 import { bcast, bLabel, bNum, console_ } from '../raijinTheme';
-import { ingestRecs, visibleRecs, Role } from '../pacing';
+import { ingestRecs, visibleRecs, DwellTracker, Role } from '../pacing';
 // CONSOLE redesign (2026-07-08): the live board is RaijinConsole; the old
 // bcast components (ActionBar/StanceBanner/Strategy/TimerRail/TeamIntel/
 // HeroDisplay) are unwired but kept on disk as reference.
@@ -115,6 +115,10 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
     const [lastHeroAt, setLastHeroAt] = useState<number | null>(null);
     const prevDeathsRef = useRef(0);
     const matchIdRef = useRef<string | null>(null);
+    // 07-23 hunt (redstack-01/-02, reset family): the match-scoped red-dwell
+    // tracker. It observes EVERY incoming rec (so demote-on-resolve releases
+    // re-arm the next arming's red) and resets with the match.
+    const dwellRef = useRef(new DwellTracker());
     const heroDataRef = useRef<HeroData | null>(null);
 
     // Wave 2 feeds — reference curves, winnability, death positions, CHECK-IN.
@@ -313,6 +317,18 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
                         prevDeathsRef.current = hd.deaths ?? 0;
                         setGapSeries([]);
                         resetWave2State();
+                        // 07-23 hunt uilogic-1: game 2 must never render game-1
+                        // coaching — recs (15-min build windows!), stance, the
+                        // authoritative timer rail, and enemy intel all reset
+                        // with the match, as does the dwell tracker. Covers the
+                        // salvage path too (no game_ended broadcast — the new
+                        // match_id is the reset signal).
+                        setRecommendations([]);
+                        setStance(null);
+                        setTimerRail(null);
+                        setEnemyIntel(null);
+                        setEnemyIntelAt(null);
+                        dwellRef.current.reset();
                     }
                     // A6.4: personal hero card — the endpoint defaults to the
                     // live hero and 404s honestly, so no card = no chip.
@@ -351,6 +367,7 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
                         // Phase 1 (#6): merge + displacement live in the
                         // PacingController now — no title matching here.
                         const now = Date.now();
+                        for (const r of newRecs) dwellRef.current.observe(r);
                         setRecommendations(prev => ingestRecs(prev, newRecs, now));
                         // Wave 2: a landed CHECK-IN answer releases the button.
                         if (newRecs.some(r => llmKind(r) === 'checkin')) {
@@ -781,6 +798,8 @@ export function RaijinRecs({ standalone = false }: RaijinRecsProps) {
             {/* CONSOLE live board — renders whenever a hero is live or frozen for review */}
             {liveBoard && heroData && (
                 <RaijinConsole
+                    key={heroData.match_id || 'live'}
+                    dwell={dwellRef.current}
                     heroData={heroData}
                     heroCard={heroCard}
                     recs={recs}

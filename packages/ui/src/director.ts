@@ -67,14 +67,28 @@ const RANKS: Record<BoardState, Record<ZoneId, ZoneRank>> = {
     },
 };
 
+/** 07-23 hunt uilogic-5: the extrapolated clock regresses on pauses (the
+ *  engine's TIMERS re-broadcast gate can skip a whole pause), so a raw
+ *  `clock < 720` flapped LANING<->MID — a full-board re-rank per flip. With
+ *  a previous state, the boundary carries a ±band: leaving LANING needs
+ *  720+15s, re-entering needs 720-15s. */
+const LANING_BAND_S = 15;
+
 /** The Director. Precedence: POSTGAME > DEAD > LANING > MID; an unknown
- *  clock never guesses LANING. */
-export function boardState(input: DirectorInput): DirectorVerdict {
+ *  clock never guesses LANING. Pass the previous state for hysteresis at
+ *  the laning boundary (DEAD/POSTGAME are event-driven and ignore it). */
+export function boardState(
+    input: DirectorInput,
+    prev: BoardState | null = null,
+): DirectorVerdict {
+    let laningCutoff = LANING_ENDS_S;
+    if (prev === 'LANING') laningCutoff = LANING_ENDS_S + LANING_BAND_S;
+    else if (prev === 'MID') laningCutoff = LANING_ENDS_S - LANING_BAND_S;
     const state: BoardState = input.gameEnded
         ? 'POSTGAME'
         : !input.alive
             ? 'DEAD'
-            : input.clock !== null && input.clock < LANING_ENDS_S
+            : input.clock !== null && input.clock < laningCutoff
                 ? 'LANING'
                 : 'MID';
     return { state, ranks: RANKS[state] };
